@@ -1,0 +1,203 @@
+# In-cluster install Job: ElastiFlow + OpenSearch for Kaytoo kind e2e (see e2e/README.md).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kaytoo-e2e-bootstrap
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kaytoo-e2e-bootstrap-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: kaytoo-e2e-bootstrap
+    namespace: default
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kaytoo-e2e-bootstrap-files
+  namespace: default
+data:
+  config.hcl: |
+    export "traces" {
+      otlp = {
+        endpoint = "https://mermin-netobserv-flow.elastiflow.svc:4317"
+        tls = {
+          insecure_skip_verify = true
+        }
+      }
+    }
+  mermin-stack-values.yaml: |
+    # Helm values for the mermin/mermin-netobserv-os-stack (keep in sync with k8s/mermin-stack-values.yaml).
+    
+    mermin:
+      enabled: true
+    
+    netobserv-flow:
+      enabled: true
+      env:
+        - name: EF_LICENSE_ACCEPTED
+          value: "true"
+        - name: EF_OUTPUT_OPENSEARCH_INDEX_TEMPLATE_REPLICAS
+          value: "0"
+        - name: EF_INPUT_OTLP_TRACE_SERVER_ENABLE
+          value: "true"
+        - name: EF_INPUT_OTLP_TRACE_SERVER_TLS_ENABLE
+          value: "true"
+        - name: EF_INPUT_OTLP_TRACE_SERVER_TLS_CERT_FILE
+          value: "/etc/ssl/netobserv/tls.crt"
+        - name: EF_INPUT_OTLP_TRACE_SERVER_TLS_KEY_FILE
+          value: "/etc/ssl/netobserv/tls.key"
+        - name: EF_INPUT_OTLP_HEALTH_GRPC_ADDR_PORT
+          value: "4316"
+      ports:
+        - name: api
+          protocol: TCP
+          containerPort: 8080
+        - name: otlp-grpc-hlth
+          protocol: TCP
+          containerPort: 4316
+        - name: otlp-grpc
+          protocol: TCP
+          containerPort: 4317
+        - name: netflow
+          protocol: UDP
+          containerPort: 9995
+      service:
+        ports:
+          - name: otlp-grpc
+            protocol: TCP
+            port: 4317
+            targetPort: 4317
+            appProtocol: HTTP2
+          - name: netflow
+            protocol: UDP
+            port: 9995
+            targetPort: 9995
+      outputOpenSearch:
+        enable: true
+        addresses: opensearch-cluster-master.elastiflow.svc:9200
+        password: __KAYTOO_E2E_OPENSEARCH_PASSWORD__ # substituted by e2e/cli.sh up
+        tls:
+          enable: true
+          skipVerification: true
+        dashboards:
+          provision: true
+          dashboards_url: http://mermin-opensearch-dashboards.elastiflow.svc:5601
+      extraVolumes:
+        - name: netobserv-tls
+          secret:
+            secretName: netobserv-tls
+      extraVolumeMounts:
+        - name: netobserv-tls
+          mountPath: /etc/ssl/netobserv/
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: netobserv-tls
+            labels:
+              {{- include "netobserv.labels" . | nindent 4 }}
+          type: kubernetes.io/tls
+          data:
+            tls.crt: {{ .Files.Get "tls/netobserv.crt" | b64enc }}
+            tls.key: {{ .Files.Get "tls/netobserv.key" | b64enc }}
+    opensearch:
+      enabled: true
+      clusterName: elastiflow
+      singleNode: true
+      replicas: 1
+      opensearchJavaOpts: "-Xmx1536m -Xms1536m -XX:G1HeapRegionSize=4m -XX:InitiatingHeapOccupancyPercent=40 -XX:MaxGCPauseMillis=200"
+      resources:
+        requests:
+          cpu: "1000m"
+          memory: 2048Mi
+        limits:
+          cpu: "1000m"
+          memory: 2560Mi
+      persistence:
+        size: 16Gi
+      extraEnvs:
+        - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+          value: __KAYTOO_E2E_OPENSEARCH_PASSWORD__ # substituted by e2e/cli.sh up
+    opensearch-dashboards:
+      enabled: true
+      opensearchHosts: https://opensearch-cluster-master.elastiflow.svc:9200
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "500m"
+          memory: "768Mi"
+      config:
+        opensearch_dashboards.yml: |
+          opensearch.ssl.verificationMode: none
+          opensearch.requestTimeout: 60000
+          opensearch.pingTimeout: 60000
+          opensearch.username: admin
+          opensearch.password: __KAYTOO_E2E_OPENSEARCH_PASSWORD__
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kaytoo-e2e-bootstrap
+  namespace: default
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      serviceAccountName: kaytoo-e2e-bootstrap
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: dtzar/helm-kubectl:3.14
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eux
+              helm repo add mermin https://elastiflow.github.io/mermin/ || true
+              helm repo add netobserv https://elastiflow.github.io/helm-chart-netobserv/ || true
+              helm repo add opensearch https://opensearch-project.github.io/helm-charts/ || true
+              helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ || true
+              helm repo update
+
+              helm upgrade -i metrics-server metrics-server/metrics-server \
+                -n kube-system \
+                --set args={--kubelet-insecure-tls} \
+                --wait --timeout=2m
+
+              kubectl create namespace elastiflow --dry-run=client -o yaml | kubectl apply -f -
+
+              helm upgrade -i --wait --timeout 15m -n elastiflow \
+                -f /bootstrap/mermin-stack-values.yaml \
+                --set-file mermin.config.content=/bootstrap/config.hcl \
+                mermin mermin/mermin-netobserv-os-stack
+
+              helm upgrade -i kaytoo -n elastiflow /chart/kaytoo \
+                -f /chart/kaytoo/kaytoo-values.yaml \
+                -f /chart/kaytoo/values-e2e.llm.local.json \
+                --wait --timeout 10m
+          volumeMounts:
+            - name: files
+              mountPath: /bootstrap
+              readOnly: true
+            - name: kaytoo-chart
+              mountPath: /chart/kaytoo
+              readOnly: true
+      volumes:
+        - name: files
+          configMap:
+            name: kaytoo-e2e-bootstrap-files
+        - name: kaytoo-chart
+          hostPath:
+            path: /kaytoo-chart
+            type: Directory

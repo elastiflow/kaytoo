@@ -1,0 +1,70 @@
+{
+  "name": "kaytoo",
+  "version": "0.1.0",
+  "description": "ElastiFlow flow-index chat agent with scheduled insights",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "main": "./dist/main.js",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "e2e:up": "bash e2e/cli.sh up",
+    "e2e:down": "bash e2e/cli.sh down",
+    "e2e:status": "bash e2e/cli.sh status",
+    "e2e:logs": "bash e2e/cli.sh logs",
+    "e2e:dev": "bash e2e/cli.sh dev",
+    "e2e:kind": "bash e2e/cli.sh up",
+    "e2e:kind:cleanup": "bash e2e/cli.sh down",
+    "e2e:verify": "bash e2e/cli.sh verify",
+    "e2e:llm-overlay": "node e2e/write-e2e-llm-overlay.mjs"
+  },
+  "keywords": [
+    "kaytoo",
+    "elastiflow",
+    "network-flows",
+    "netflow",
+    "sflow",
+    "ipfix",
+    "flow-logs",
+    "opensearch",
+    "elasticsearch",
+    "slack",
+    "matrix",
+    "mattermost",
+    "chatbot",
+    "llm",
+    "observability",
+    "security",
+    "anomaly-detection"
+  ],
+  "author": "ElastiFlow, Inc.",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "eslint": "^10.2.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.0",
+    "vitest": "^4.1.5"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^9.1.1",
+    "@opensearch-project/opensearch": "^3.5.1",
+    "@slack/socket-mode": "^2.0.6",
+    "@slack/web-api": "^7.15.1",
+    "matrix-js-sdk": "^38.4.0",
+    "pino": "^10.3.1",
+    "zod": "^4.3.6"
+  }
+}

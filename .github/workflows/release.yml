@@ -1,0 +1,244 @@
+name: Release Kaytoo
+
+concurrency:
+  group: release-kaytoo-${{ github.ref }}
+  cancel-in-progress: false
+
+on:
+  push:
+    branches: [main]
+
+env:
+  TAG_PREFIX: "v"
+  CHARTS_DIR: helm/kaytoo
+  NODE_VERSION: "24"
+
+jobs:
+  release_or_pr:
+    name: Release or release PR?
+    runs-on: ubuntu-latest
+    outputs:
+      is_release: ${{ steps.release_or_pr.outputs.is_release }}
+    steps:
+      - id: release_or_pr
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          cat > /tmp/commit_message <<- EOF
+          ${COMMIT_MESSAGE}
+          EOF
+          cat /tmp/commit_message
+          if grep -Pq '^\[release .+\] \(#[0-9]{1,5}\)$' /tmp/commit_message; then
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release_pr_create:
+    name: Release PR create
+    needs: [release_or_pr]
+    if: ${{ ! fromJson(needs.release_or_pr.outputs.is_release) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Prepare release
+        id: prepare_release
+        uses: elastiflow/gha-reusable/actions/prepare-release@d6c789dd2ddd8d8350625c7e4dfa3b39e6123d83 # v0
+        with:
+          tag_prefix: ${{ env.TAG_PREFIX }}
+          changelog_update: "true"
+          changelog_path: CHANGELOG.md
+          bump_version_yaml: "true"
+          bump_version_yaml_path: ${{ env.CHARTS_DIR }}/Chart.yaml
+          bump_version_yaml_key: ".version,.appVersion"
+
+      - name: Set up Node.js
+        if: ${{ fromJson(steps.prepare_release.outputs.new_release_published) }}
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Bump package.json version
+        if: ${{ fromJson(steps.prepare_release.outputs.new_release_published) }}
+        env:
+          VERSION: ${{ steps.prepare_release.outputs.new_release_version }}
+        run: |
+          v="${VERSION#v}"
+          npm version "$v" --no-git-tag-version
+
+      - name: Create pull request
+        if: ${{ fromJson(steps.prepare_release.outputs.new_release_published) }}
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: ${{ github.ref_name }}
+          branch: release-from-${{ github.ref_name }}
+          title: "[release ${{ steps.prepare_release.outputs.new_release_git_tag }}]"
+          body: |
+            ## Description
+
+            Release ${{ steps.prepare_release.outputs.new_release_git_tag }}.
+
+            ## Changelog
+
+            ${{ steps.prepare_release.outputs.new_release_notes }}
+
+  release:
+    name: Release
+    needs: [release_or_pr]
+    if: ${{ fromJson(needs.release_or_pr.outputs.is_release) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      new_release_published: ${{ steps.prepare_release.outputs.new_release_published }}
+      new_release_version: ${{ steps.prepare_release.outputs.new_release_version }}
+      new_release_git_tag: ${{ steps.prepare_release.outputs.new_release_git_tag }}
+      new_release_notes: ${{ steps.prepare_release.outputs.new_release_notes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Prepare release
+        id: prepare_release
+        uses: elastiflow/gha-reusable/actions/prepare-release@d6c789dd2ddd8d8350625c7e4dfa3b39e6123d83 # v0
+        with:
+          tag_prefix: ${{ env.TAG_PREFIX }}
+
+      - name: Lowercase container image
+        id: container_image
+        if: ${{ fromJson(steps.prepare_release.outputs.new_release_published) }}
+        env:
+          TAG: ${{ steps.prepare_release.outputs.new_release_git_tag }}
+        run: |
+          echo "image=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]'):${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: ${{ fromJson(steps.prepare_release.outputs.new_release_published) }}
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          name: ${{ steps.prepare_release.outputs.new_release_git_tag }}
+          tag_name: ${{ steps.prepare_release.outputs.new_release_git_tag }}
+          body: |
+            ${{ steps.prepare_release.outputs.new_release_notes }}
+
+            **Container**
+
+            - `${{ steps.container_image.outputs.image }}`
+          target_commitish: ${{ github.ref_name }}
+          generate_release_notes: false
+
+  docker_build_push:
+    name: Docker build and push
+    needs: [release]
+    if: ${{ fromJson(needs.release.outputs.new_release_published) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set lowercase image name
+        id: image
+        run: echo "image=${REGISTRY}/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ${{ steps.image.outputs.image }}
+          tags: |
+            type=raw,value=${{ needs.release.outputs.new_release_git_tag }}
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release_chart:
+    name: Release Helm chart
+    needs: [release, docker_build_push]
+    if: ${{ fromJson(needs.release.outputs.new_release_published) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2 # v5.0.0
+
+      - name: Install Helm chart dependencies
+        run: |
+          (helm dependency list "${{ env.CHARTS_DIR }}" || true) | grep -E 'https://' | while read -r dep; do
+            helm repo add "$(echo "${dep}" | awk '{print $1}')" "$(echo "${dep}" | awk '{print $4}')"
+          done
+
+      - name: Install chart-releaser
+        uses: helm/chart-releaser-action@cae68fefc6b5f367a0275617c9f83181ba54714f # v1.7.0
+        env:
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          install_only: true
+
+      - name: Package Helm chart
+        run: cr package "${{ env.CHARTS_DIR }}"
+
+      - name: Create chart GitHub release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        with:
+          name: kaytoo-${{ needs.release.outputs.new_release_version }}
+          tag_name: kaytoo-${{ needs.release.outputs.new_release_version }}
+          body: |
+            Helm chart for Kaytoo ${{ needs.release.outputs.new_release_version }}.
+
+            ${{ needs.release.outputs.new_release_notes }}
+          target_commitish: ${{ github.ref_name }}
+          generate_release_notes: false
+          make_latest: false
+          files: .cr-release-packages/*.tgz
+
+      - name: Update GitHub Pages Helm index
+        continue-on-error: true
+        env:
+          REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p .cr-index
+          cr index --push -t "${REPO_TOKEN}" --owner "${{ github.repository_owner }}" --git-repo "${{ github.event.repository.name }}"

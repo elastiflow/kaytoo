@@ -1,0 +1,31 @@
+# kind e2e overrides only (see e2e/README). LLM: second -f values-e2e.llm.local.json from .env via e2e/cli.sh.
+kaytooOutput: console
+
+httpChat:
+  enabled: true
+
+image:
+  repository: kaytoo-e2e
+  tag: local
+  pullPolicy: Never
+
+resources:
+  requests:
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+secrets:
+  opensearchUsername: admin
+  opensearchPassword: __KAYTOO_E2E_OPENSEARCH_PASSWORD__
+
+config:
+  opensearch:
+    url: https://opensearch-cluster-master.elastiflow.svc:9200
+    tlsInsecure: "true"
+  behavior:
+    pollIntervalSeconds: "15"
+  thresholds:
+    egressMinBytes: "5000"
+    egressMultiplier: "2"

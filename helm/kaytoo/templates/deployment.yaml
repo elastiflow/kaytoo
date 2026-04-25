@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kaytoo.fullname" . }}
+  labels:
+    {{- include "kaytoo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kaytoo.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "kaytoo.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "kaytoo.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: kaytoo
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "kaytoo.fullname" . }}
+            - secretRef:
+                name: {{ default (include "kaytoo.fullname" .) .Values.secrets.existingSecret }}
+          {{- if .Values.httpChat.enabled }}
+          ports:
+            - name: http-chat
+              containerPort: {{ .Values.httpChat.port }}
+              protocol: TCP
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

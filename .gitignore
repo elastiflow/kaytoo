@@ -1,0 +1,41 @@
+# Node / package manager
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build output
+dist/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# Vitest
+coverage/
+node_modules/.vitest/
+.vitest/
+
+# Caches
+.cache/
+.eslintcache
+
+# Logs
+logs/
+*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Ephemeral Helm values for kind e2e
+e2e/.generated/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.cursor/

@@ -1,0 +1,18 @@
+{{- if .Values.httpChat.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kaytoo.fullname" . }}-chat
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kaytoo.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "kaytoo.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http-chat
+      port: {{ .Values.httpChat.port }}
+      targetPort: http-chat
+      protocol: TCP
+{{- end }}
