@@ -21,7 +21,7 @@ describe('getConfig', () => {
     expect(cfg.search.tlsInsecure).toBe(false);
     expect(cfg.search.indexPattern).toBe('elastiflow-flow-codex-*');
     expect(cfg.search.backend).toBe('opensearch');
-    expect(cfg.llm.model).toBe('gpt-5.3-codex');
+    expect(cfg.llm.model).toBe('gpt-5.4-codex');
     expect(cfg.behavior.pollIntervalSeconds).toBe(300);
     expect(cfg.behavior.dedupeTtlSeconds).toBe(3600);
     expect(cfg.logging.level).toBe('info');

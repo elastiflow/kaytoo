@@ -62,7 +62,12 @@ export function resetLogging(): void {
 
 export function getRootLogger(): PinoLogger {
   if (!root.current) {
-    root.current = initLogging({ level: 'info', redactPaths: [], nodeEnv: 'development' });
+    const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST != null;
+    root.current = initLogging({
+      level: isTest ? 'silent' : 'info',
+      redactPaths: [],
+      nodeEnv: isTest ? 'test' : 'development',
+    });
   }
   return root.current;
 }

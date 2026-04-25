@@ -62,7 +62,7 @@ export OPENSEARCH_PASSWORD="..."
 export OPENSEARCH_TLS_INSECURE="true"
 export LLM_BASE_URL="http://example.ai.org:3000"
 export LLM_API_KEY="..."
-export LLM_MODEL="gpt-5.3-codex"
+export LLM_MODEL="gpt-5.4-codex"
 
 npm run dev
 ```
@@ -80,7 +80,7 @@ export OPENSEARCH_TLS_INSECURE="true"
 export LLM_BASE_URL="http://example.ai.org:3000"
 export LLM_API_KEY="..."
 
-npm run dev - --output console
+npm run dev -- --output console
 ```
 
 ### Configuration
