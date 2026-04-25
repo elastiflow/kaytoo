@@ -19,8 +19,8 @@
     <a href="https://github.com/elastiflow/kaytoo/actions/workflows/ci.yml">
       <img alt="CI" src="https://github.com/elastiflow/kaytoo/actions/workflows/ci.yml/badge.svg" />
     </a>
-    <a href="https://github.com/elastiflow/kaytoo/actions/workflows/cd.yml">
-      <img alt="CD" src="https://github.com/elastiflow/kaytoo/actions/workflows/cd.yml/badge.svg" />
+    <a href="https://github.com/elastiflow/kaytoo/actions/workflows/release.yml">
+      <img alt="Release workflow" src="https://github.com/elastiflow/kaytoo/actions/workflows/release.yml/badge.svg" />
     </a>
     <a href="https://github.com/elastiflow/kaytoo/releases">
       <img alt="Release" src="https://img.shields.io/github/v/release/elastiflow/kaytoo" />
