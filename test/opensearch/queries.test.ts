@@ -13,7 +13,7 @@ describe('opensearch helpers', () => {
     const { createSearchClient } = await import('../../src/search/client.js');
     const { Client } = (await import('@opensearch-project/opensearch')) as unknown as { Client: ReturnType<typeof vi.fn> };
 
-    createSearchClient({
+    await createSearchClient({
       backend: 'opensearch',
       url: 'https://os.example.com',
       username: 'u',
@@ -27,7 +27,7 @@ describe('opensearch helpers', () => {
     });
 
     Client.mockClear();
-    createSearchClient({
+    await createSearchClient({
       backend: 'opensearch',
       url: 'https://os.example.com',
       username: 'u',

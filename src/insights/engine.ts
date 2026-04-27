@@ -37,7 +37,13 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   const { config } = opts;
   const log = getLogger({ component: 'insights' });
   const controller = new AbortController();
-  const client = createSearchClient(config.search);
+
+  if (config.behavior.pollIntervalSeconds <= 0) {
+    log.info({ pollSeconds: config.behavior.pollIntervalSeconds }, 'insight polling disabled');
+    return { stop: () => controller.abort() };
+  }
+
+  const client = await createSearchClient(config.search);
   const fields = await waitForOpenSearchFieldMapping({
     client,
     indexPattern: config.search.indexPattern,
@@ -55,9 +61,17 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   });
   const dedupe = new DedupeStore(config.behavior.dedupeTtlSeconds * 1000);
   const warnAt = new Map<string, number>();
-  const timer = setInterval(() => void pollOnce(), config.behavior.pollIntervalSeconds * 1000);
+  let timer: NodeJS.Timeout | undefined;
+  let inFlight = false;
+
+  const scheduleNext = (): void => {
+    if (controller.signal.aborted) return;
+    timer = setTimeout(() => void pollOnce(), config.behavior.pollIntervalSeconds * 1000);
+  };
 
   async function pollOnce(): Promise<void> {
+    if (inFlight) return;
+    inFlight = true;
     return runWithLogContextAsync({ pollId: randomUUID() }, async () => {
       try {
         if (controller.signal.aborted) return;
@@ -167,6 +181,9 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
         await postFindings(novel);
       } catch (e) {
         log.error({ ...logErr(e) }, 'poll failed');
+      } finally {
+        inFlight = false;
+        scheduleNext();
       }
     });
   }
@@ -195,7 +212,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   return {
     stop: () => {
       controller.abort();
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
     },
   };
 }

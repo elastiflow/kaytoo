@@ -1,10 +1,9 @@
-import { Client as ElasticClient } from '@elastic/elasticsearch';
-import { Client as OpenSearchClient } from '@opensearch-project/opensearch';
 import type { KaytooConfig } from '../config.js';
 import type { SearchClient } from './types.js';
 
-export function createSearchClient(config: KaytooConfig['search']): SearchClient {
+export async function createSearchClient(config: KaytooConfig['search']): Promise<SearchClient> {
   if (config.backend === 'elasticsearch') {
+    const { Client: ElasticClient } = await import('@elastic/elasticsearch');
     const client = new ElasticClient({
       node: config.url,
       auth: { username: config.username, password: config.password },
@@ -17,6 +16,7 @@ export function createSearchClient(config: KaytooConfig['search']): SearchClient
     return adapted as unknown as SearchClient;
   }
 
+  const { Client: OpenSearchClient } = await import('@opensearch-project/opensearch');
   const client = new OpenSearchClient({
     node: config.url,
     auth: { username: config.username, password: config.password },
