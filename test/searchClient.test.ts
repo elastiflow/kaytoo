@@ -28,7 +28,7 @@ describe('createSearchClient', () => {
       };
     });
     const { createSearchClient } = await import('../src/search/client.js');
-    const sc = createSearchClient({
+    const sc = await createSearchClient({
       backend: 'elasticsearch',
       url: 'https://es.example:9200',
       username: 'u',
@@ -52,7 +52,7 @@ describe('createSearchClient', () => {
       return { search: vi.fn(), fieldCaps: vi.fn() };
     });
     const { createSearchClient } = await import('../src/search/client.js');
-    createSearchClient({
+    await createSearchClient({
       backend: 'opensearch',
       url: 'https://os.example:9200',
       username: 'u',
@@ -74,7 +74,7 @@ describe('createSearchClient', () => {
       return { search: vi.fn(), fieldCaps: vi.fn() };
     });
     const { createSearchClient } = await import('../src/search/client.js');
-    createSearchClient({
+    await createSearchClient({
       backend: 'opensearch',
       url: 'https://os.example',
       username: 'u',

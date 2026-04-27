@@ -48,7 +48,7 @@ export async function createToolRegistry(opts: {
   policy: AgentPolicy;
 }): Promise<ToolRegistry> {
   const log = getLogger({ component: 'agent.tools' });
-  const client = createSearchClient(opts.config.search);
+  const client = await createSearchClient(opts.config.search);
   const fields = await waitForOpenSearchFieldMapping({
     client,
     indexPattern: opts.config.search.indexPattern,

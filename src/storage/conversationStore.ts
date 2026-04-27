@@ -118,6 +118,16 @@ export function createFileConversationStore(opts: {
 /** Non-persistent in-memory store (single process). */
 export function createMemoryConversationStore(opts: { ttlMs: number }): ConversationStore {
   const map = new Map<string, StoredConversation>();
+  const gc = { nextAtMs: 0 };
+  const maybePrune = (): void => {
+    const now = Date.now();
+    if (now < gc.nextAtMs) return;
+    gc.nextAtMs = now + 60_000;
+    const cutoff = now - opts.ttlMs;
+    for (const [k, e] of map) {
+      if (!isStoredConversation(e) || e.updatedAtMs < cutoff) map.delete(k);
+    }
+  };
   return {
     async load(key) {
       const e = map.get(key);
@@ -133,6 +143,7 @@ export function createMemoryConversationStore(opts: { ttlMs: number }): Conversa
       return e;
     },
     async save(key, data) {
+      maybePrune();
       const merged: StoredConversation = { ...data, updatedAtMs: Date.now() };
       if (!isStoredConversation(merged)) throw new Error('invalid conversation payload');
       map.set(key, merged);
