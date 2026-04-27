@@ -28,7 +28,7 @@ jobs:
           ${COMMIT_MESSAGE}
           EOF
           cat /tmp/commit_message
-          if grep -Pq '^\[release .+\] \(#[0-9]{1,5}\)$' /tmp/commit_message; then
+          if grep -Pq '^\[release .+\](\s+\(#[0-9]{1,5}\))?$' /tmp/commit_message; then
             echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_release=false" >> "$GITHUB_OUTPUT"
@@ -71,7 +71,12 @@ jobs:
           VERSION: ${{ steps.prepare_release.outputs.new_release_version }}
         run: |
           v="${VERSION#v}"
-          npm version "$v" --no-git-tag-version
+          current="$(node -p "require('./package.json').version")"
+          if [ "${current}" = "${v}" ]; then
+            echo "package.json already at ${v}; skipping npm version"
+            exit 0
+          fi
+          npm version "${v}" --no-git-tag-version
 
       - name: Create pull request
         if: ${{ fromJson(steps.prepare_release.outputs.new_release_published) }}
@@ -80,6 +85,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           base: ${{ github.ref_name }}
           branch: release-from-${{ github.ref_name }}
+          commit-message: "[release ${{ steps.prepare_release.outputs.new_release_git_tag }}]"
           title: "[release ${{ steps.prepare_release.outputs.new_release_git_tag }}]"
           body: |
             ## Description
