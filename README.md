@@ -6,7 +6,7 @@
 
   <h1>Kaytoo</h1>
 
-  <p>Chat agent and scheduled insight posts over ElastiFlow flow indexes.</p>
+  <p>Query and monitor ElastiFlow network flows from your team's chat platform.</p>
 
   <p>
     <a href="#quick-start"><strong>Quick start</strong></a>
@@ -41,7 +41,13 @@
 
 ### Overview
 
-Kaytoo is a chat-first layer on ElastiFlow flow indexes in OpenSearch or Elasticsearch: an OpenAI-compatible tool agent (flow search, rankings, fan-in, namespace/protocol rollups, bounded `flowAggregate`, heuristic detectors), optional scheduled insight posts to the channel, Slack (Socket Mode) / Mattermost (WebSocket) / Matrix adapters, structured JSON logs, and a Helm chart.
+Kaytoo is a **chat-first interface** for ElastiFlow data stored in **OpenSearch** or **Elasticsearch**. It runs as an **OpenAI-compatible tool agent**, so you can **query, analyze, and monitor** network flows from the same place your team already works.
+
+- **Analysis**: Built-in tools for flow search, rankings, fan-in analysis, and namespace/protocol rollups.
+- **Aggregations**: Bounded `flowAggregate` plus heuristic detectors for anomaly-style signals.
+- **Insights**: Optional scheduled posts to keep the channel aware of network trends.
+- **Multi-platform**: Slack (Socket Mode), Mattermost (WebSocket), and Matrix.
+- **Ops-ready**: Structured JSON logging and a **Helm chart** for Kubernetes deployment.
 
 ### Quick start
 
