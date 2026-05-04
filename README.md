@@ -1,3 +1,6 @@
+> ⚠️ **Notice**  
+> This repo is a small, experimental project built for fun and learning. It’s shared publicly **as-is** with no promised support, roadmap, or guarantees.
+
 <div align="center">
   <img src="assets/kaytoo.png" alt="Kaytoo logo" width="180" />
 
