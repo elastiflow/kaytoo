@@ -3,24 +3,46 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Kaytoo Helm Chart Repository</title>
+    <title>Kaytoo Helm chart repository</title>
     <style>
       :root { color-scheme: light dark; }
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 40px; line-height: 1.45; }
-      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        margin: 40px;
+        line-height: 1.45;
+      }
+      pre, code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          monospace;
+        font-size: 13px;
+      }
+      pre {
+        padding: 16px;
+        border: 1px solid rgba(127, 127, 127, 0.25);
+        border-radius: 8px;
+        overflow: auto;
+      }
+      a { color: inherit; }
     </style>
   </head>
   <body>
-    <h1>Kaytoo Helm Chart Repository</h1>
-    <p>This site hosts the Helm repository index for Kaytoo.</p>
+    <pre># Kaytoo Helm chart repository
 
-    <ul>
-      <li><a href="./index.yaml"><code>index.yaml</code></a></li>
-    </ul>
+This branch is used to publish the Helm chart index for GitHub Pages.
 
-    <p>Install:</p>
-    <pre><code>helm repo add kaytoo https://elastiflow.github.io/kaytoo
+Kaytoo can be installed from the official helm chart:
+
+```bash
+helm repo add kaytoo https://elastiflow.github.io/kaytoo
 helm repo update
-helm upgrade --install kaytoo kaytoo/kaytoo --namespace elastiflow --create-namespace</code></pre>
+
+helm upgrade --install kaytoo kaytoo/kaytoo \
+  --namespace elastiflow --create-namespace
+```
+</pre>
+
+    <p>
+      Helm index: <a href="./index.yaml"><code>index.yaml</code></a>
+    </p>
   </body>
 </html>
