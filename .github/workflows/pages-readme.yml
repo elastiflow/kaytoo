@@ -1,0 +1,92 @@
+name: Publish README to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: gh-pages-readme
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Update gh-pages index.html from README
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Render README.md to HTML (GFM)
+        id: render
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          payload="$(jq -n \
+            --arg text "$(cat README.md)" \
+            --arg mode "gfm" \
+            --arg context "${GITHUB_REPOSITORY}" \
+            '{text:$text,mode:$mode,context:$context}')"
+
+          html="$(curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/markdown \
+            -d "${payload}")"
+
+          cat > index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta name="viewport" content="width=device-width,initial-scale=1" />
+              <title>Kaytoo</title>
+              <link rel="stylesheet" href="https://unpkg.com/github-markdown-css@5.8.1/github-markdown.css" />
+              <style>
+                body { margin: 0; }
+                .markdown-body { box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 32px 20px; }
+              </style>
+            </head>
+            <body>
+              <article class="markdown-body">
+          EOF
+
+          printf '%s\n' "${html}" >> index.html
+
+          cat >> index.html <<'EOF'
+              </article>
+            </body>
+          </html>
+          EOF
+
+      - name: Checkout gh-pages
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: gh-pages
+          path: gh-pages
+          fetch-depth: 0
+
+      - name: Update gh-pages index.html
+        run: |
+          cp index.html gh-pages/index.html
+          touch gh-pages/.nojekyll
+
+      - name: Commit and push (if changed)
+        run: |
+          cd gh-pages
+          if git diff --quiet; then
+            echo "No changes to publish."
+            exit 0
+          fi
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git add index.html .nojekyll
+          git commit -m "chore(pages): publish README from main"
+          git push
+
