@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Kaytoo Helm Chart Repository</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 40px; line-height: 1.45; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    </style>
+  </head>
+  <body>
+    <h1>Kaytoo Helm Chart Repository</h1>
+    <p>This site hosts the Helm repository index for Kaytoo.</p>
+
+    <ul>
+      <li><a href="./index.yaml"><code>index.yaml</code></a></li>
+    </ul>
+
+    <p>Install:</p>
+    <pre><code>helm repo add kaytoo https://elastiflow.github.io/kaytoo
+helm repo update
+helm upgrade --install kaytoo kaytoo/kaytoo --namespace elastiflow --create-namespace</code></pre>
+  </body>
+</html>
