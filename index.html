@@ -9,34 +9,131 @@
       href="https://unpkg.com/github-markdown-css@5.8.1/github-markdown.css"
     />
     <style>
+      :root {
+        --page-max: 980px;
+        --card-radius: 12px;
+      }
+
       body {
         margin: 0;
+        background: #ffffff;
+        color: #1f2328;
       }
-      .markdown-body {
-        box-sizing: border-box;
-        min-width: 200px;
-        max-width: 980px;
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #0d1117;
+          color: #e6edf3;
+        }
+      }
+
+      .page {
+        max-width: var(--page-max);
         margin: 0 auto;
-        padding: 32px 20px;
+        padding: 32px 20px 48px;
+      }
+
+      .card {
+        border: 1px solid rgba(31, 35, 40, 0.15);
+        border-radius: var(--card-radius);
+        background: #ffffff;
+        box-shadow:
+          0 1px 0 rgba(31, 35, 40, 0.04),
+          0 8px 24px rgba(31, 35, 40, 0.08);
+        padding: 24px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .card {
+          background: #0d1117;
+          border-color: rgba(240, 246, 252, 0.12);
+          box-shadow:
+            0 1px 0 rgba(255, 255, 255, 0.03),
+            0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+      }
+
+      .topbar {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 14px;
+        opacity: 0.9;
+      }
+
+      .links a {
+        text-decoration: none;
+      }
+
+      .links a:hover {
+        text-decoration: underline;
+      }
+
+      .subtle {
+        font-size: 14px;
+        opacity: 0.9;
+      }
+
+      .markdown-body {
+        padding: 0;
+        background: transparent;
+        color: inherit;
+      }
+
+      .markdown-body h1 {
+        margin: 0;
+        font-size: 24px;
+      }
+
+      .markdown-body pre {
+        border-radius: 10px;
+        border: 1px solid rgba(127, 127, 127, 0.2);
+      }
+
+      .markdown-body code,
+      .markdown-body pre code {
+        font-size: 13px;
       }
     </style>
   </head>
   <body>
-    <article class="markdown-body">
-      <h1>Kaytoo Helm chart repository</h1>
-      <p>This branch is used to publish the Helm chart index for GitHub Pages.</p>
+    <div class="page">
+      <div class="card">
+        <div class="topbar">
+          <h1 class="markdown-body">Kaytoo Helm chart repository</h1>
+          <nav class="links">
+            <a href="./index.yaml"><code>index.yaml</code></a>
+            <a href="https://github.com/elastiflow/kaytoo/releases">releases</a>
+            <a href="https://github.com/elastiflow/kaytoo">source</a>
+          </nav>
+        </div>
 
-      <p>Kaytoo can be installed from the official helm chart:</p>
+        <div class="subtle">
+          This GitHub Pages site hosts the Helm repository index for Kaytoo.
+        </div>
 
-      <pre><code class="language-bash">helm repo add kaytoo https://elastiflow.github.io/kaytoo
+        <article class="markdown-body">
+          <h2>Install</h2>
+
+          <pre><code class="language-bash">helm repo add kaytoo https://elastiflow.github.io/kaytoo
 helm repo update
 
 helm upgrade --install kaytoo kaytoo/kaytoo \
   --namespace elastiflow --create-namespace</code></pre>
-
-      <p>
-        Helm index: <a href="./index.yaml"><code>index.yaml</code></a>
-      </p>
-    </article>
+          <p class="subtle">
+            Tip: use <code>-f values.yaml</code> for overrides instead of long
+            <code>--set</code> lists.
+          </p>
+        </article>
+      </div>
+    </div>
   </body>
 </html>
