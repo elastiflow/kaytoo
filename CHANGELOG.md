@@ -1,3 +1,13 @@
+## [v0.5.0] - 2026-05-12
+
+### Features
+
+- **matrix:** Render assistant markdown as sanitized HTML (#21)
+
+[v0.4.0..v0.5.0](https://github.com/elastiflow/kaytoo/compare/v0.4.0...v0.5.0)
+
+
+
 ## [v0.4.0] - 2026-05-12
 
 ### Bug Fixes
