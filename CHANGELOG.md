@@ -1,3 +1,13 @@
+## [v0.3.1] - 2026-05-12
+
+### Bug Fixes
+
+- **logging:** ALS-safe mixin, quieter errors, matrix login creds (#16)
+
+[v0.3.0..v0.3.1](https://github.com/elastiflow/kaytoo/compare/v0.3.0...v0.3.1)
+
+
+
 ## [v0.3.0] - 2026-05-12
 
 ### Features
