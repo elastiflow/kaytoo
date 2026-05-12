@@ -51,9 +51,8 @@ export function initLogging(opts: LoggingInit): PinoLogger {
     base: null,
     redact: { paths: redact, censor: '[Redacted]' },
     mixin() {
-      // Pino's defaultMixinMergeStrategy does Object.assign(mixinObject, mergeObject),
-      // which mutates the object we return. Return a fresh copy so the AsyncLocalStorage
-      // store isn't polluted with per-call fields that would then leak into later logs.
+      // Pino merges per-call fields into the returned object in place; copy so
+      // the AsyncLocalStorage store isn't mutated across log calls.
       const ctx = getLogContext();
       return ctx ? { ...ctx } : {};
     },

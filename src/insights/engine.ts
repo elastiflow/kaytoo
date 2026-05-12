@@ -203,9 +203,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     try {
       await opts.insightSink.postInsight(text);
     } catch (e) {
-      // Inner notifiers (RetryNotifier, etc.) already logged the cause; log the
-      // delivery outcome only and do not mark findings as posted so retries on
-      // the next poll remain possible.
+      // Notifier already logged the cause; record outcome and skip dedupe so the next poll retries.
       log.warn({ findingCount: novel.length, output: config.output, ...logErr(e) }, 'post findings failed');
       return;
     }
