@@ -50,12 +50,14 @@ export async function startMatrixAdapter(opts: {
   });
 
   if ('user' in opts.auth) {
-    await client.loginRequest({
+    const resp = await client.loginRequest({
       type: 'm.login.password',
       identifier: loginIdentifier(opts.auth.user),
       password: opts.auth.password,
       initial_device_display_name: 'kaytoo',
     });
+    client.setAccessToken(resp.access_token);
+    client.credentials = { userId: resp.user_id };
   }
 
   const onTimeline = async (

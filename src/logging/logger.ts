@@ -6,6 +6,14 @@ import { getLogContext } from './context.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+export function getServiceMetadata(): { service: 'kaytoo'; env: string; version: string } {
+  return {
+    service: 'kaytoo',
+    env: process.env.NODE_ENV ?? 'development',
+    version: readPackageVersion(),
+  };
+}
+
 const defaultRedactPaths = [
   'password',
   '*.token',
@@ -40,14 +48,13 @@ export function initLogging(opts: LoggingInit): PinoLogger {
   const redact = [...defaultRedactPaths, ...opts.redactPaths];
   const baseOpts = {
     level: opts.level,
-    base: {
-      service: 'kaytoo',
-      env: process.env.NODE_ENV ?? 'development',
-      version: readPackageVersion(),
-    },
+    base: null,
     redact: { paths: redact, censor: '[Redacted]' },
     mixin() {
-      return getLogContext() ?? {};
+      // Pino merges per-call fields into the returned object in place; copy so
+      // the AsyncLocalStorage store isn't mutated across log calls.
+      const ctx = getLogContext();
+      return ctx ? { ...ctx } : {};
     },
   };
   root.current = opts.destination ? pino(baseOpts, opts.destination) : pino(baseOpts);
@@ -102,18 +109,7 @@ export function logErr(e: unknown): { err: { name: string; message: string; stac
 
 export async function withDurationMs<T>(log: PinoLogger, msg: string, fn: () => Promise<T>): Promise<T> {
   const t0 = Date.now();
-  try {
-    const out = await fn();
-    log.debug({ durationMs: Date.now() - t0 }, msg);
-    return out;
-  } catch (e) {
-    log.warn(
-      {
-        durationMs: Date.now() - t0,
-        ...(e instanceof Error ? { err: e } : logErr(e)),
-      },
-      `${msg} failed`,
-    );
-    throw e;
-  }
+  const out = await fn();
+  log.debug({ durationMs: Date.now() - t0 }, msg);
+  return out;
 }

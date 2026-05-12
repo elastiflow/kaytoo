@@ -18,6 +18,8 @@ vi.mock('matrix-js-sdk', () => ({
     joinRoom: vi.fn().mockResolvedValue({}),
     getUserId: vi.fn().mockReturnValue('@bot:hs'),
     loginRequest: vi.fn().mockResolvedValue({ access_token: 'srv-tok', user_id: '@bot:hs' }),
+    setAccessToken: vi.fn(),
+    credentials: undefined as unknown,
   })),
 }));
 
@@ -254,7 +256,7 @@ describe('startMatrixAdapter', () => {
     await stop();
   });
 
-  it('uses matrix-js-sdk login with m.login.password and no token in createClient', async () => {
+  it('uses matrix-js-sdk login with m.login.password and installs returned credentials', async () => {
     const { stop, client } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
       auth: { user: 'kaytoo', password: 'pw' },
@@ -273,6 +275,8 @@ describe('startMatrixAdapter', () => {
       password: 'pw',
       initial_device_display_name: 'kaytoo',
     });
+    expect(client.setAccessToken).toHaveBeenCalledWith('srv-tok');
+    expect((client as unknown as { credentials: { userId: string } }).credentials).toEqual({ userId: '@bot:hs' });
     await stop();
   });
 
@@ -303,6 +307,8 @@ describe('startMatrixAdapter', () => {
           joinRoom: vi.fn().mockResolvedValue({}),
           getUserId: vi.fn().mockReturnValue('@bot:hs'),
           loginRequest: vi.fn().mockRejectedValue(new Error('M_FORBIDDEN: Invalid password')),
+          setAccessToken: vi.fn(),
+          credentials: undefined as unknown,
         }) as unknown as MatrixClient,
     );
     await expect(

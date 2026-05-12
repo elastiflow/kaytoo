@@ -154,7 +154,7 @@ Agent tools include flow search, rankings, fan-in, rare-destination / port-scan 
 
 Logging verbosity, redaction, and the `env` field use fixed defaults and are not configurable via environment variables.
 
-In Kubernetes with Loki or VictoriaLogs, query on stable fields such as `service="kaytoo"`, `component`, `level`, `pollId`, `eventId`, and `msg`.
+In Kubernetes with Loki or VictoriaLogs, query on stable fields such as `component`, `level`, `pollId`, `eventId`, and `msg`. Service/env/version are emitted once on the `kaytoo starting` line; rely on pod labels elsewhere.
 
 ### Chat adapters
 

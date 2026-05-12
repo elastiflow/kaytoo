@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Logger } from 'pino';
 import type { ChatAddress, ChatPost } from '../src/chat/types.js';
 import type { Notifier } from '../src/notify/notifier.js';
 import { createMultiInsightSink, createPlatformInsightSink } from '../src/notify/insightSink.js';
@@ -12,18 +11,6 @@ function recordingNotifier(): Notifier & { calls: ChatPost[] } {
       calls.push(input);
     },
   };
-}
-
-function silentLogger(): Logger & { warns: Array<{ obj: unknown; msg: string }> } {
-  const warns: Array<{ obj: unknown; msg: string }> = [];
-  const log = {
-    warns,
-    warn: (obj: unknown, msg: string) => warns.push({ obj, msg }),
-    info: () => {},
-    error: () => {},
-    debug: () => {},
-  } as unknown as Logger & { warns: Array<{ obj: unknown; msg: string }> };
-  return log;
 }
 
 describe('createPlatformInsightSink', () => {
@@ -52,7 +39,7 @@ describe('createMultiInsightSink', () => {
   it('fans out to every sink', async () => {
     const a = { postInsight: vi.fn().mockResolvedValue(undefined) };
     const b = { postInsight: vi.fn().mockResolvedValue(undefined) };
-    const sink = createMultiInsightSink({ sinks: [a, b], log: silentLogger() });
+    const sink = createMultiInsightSink({ sinks: [a, b] });
 
     await sink.postInsight('msg');
 
@@ -60,22 +47,31 @@ describe('createMultiInsightSink', () => {
     expect(b.postInsight).toHaveBeenCalledWith('msg');
   });
 
-  it('continues past a failing sink and logs the rejection', async () => {
+  it('resolves when at least one sink succeeds (inner notifier owns failure logging)', async () => {
     const ok = { postInsight: vi.fn().mockResolvedValue(undefined) };
     const fail = { postInsight: vi.fn().mockRejectedValue(new Error('matrix down')) };
-    const log = silentLogger();
-    const sink = createMultiInsightSink({ sinks: [fail, ok], log });
+    const sink = createMultiInsightSink({ sinks: [fail, ok] });
 
     await expect(sink.postInsight('msg')).resolves.toBeUndefined();
     expect(ok.postInsight).toHaveBeenCalled();
-    expect(log.warns).toHaveLength(1);
-    expect(log.warns[0]?.msg).toBe('insight sink failed');
+  });
+
+  it('rethrows the single reason when only one sink is configured and it fails', async () => {
+    const fail = { postInsight: vi.fn().mockRejectedValue(new Error('matrix down')) };
+    const sink = createMultiInsightSink({ sinks: [fail] });
+    await expect(sink.postInsight('msg')).rejects.toThrow('matrix down');
+  });
+
+  it('rejects with AggregateError when every sink fails', async () => {
+    const a = { postInsight: vi.fn().mockRejectedValue(new Error('a down')) };
+    const b = { postInsight: vi.fn().mockRejectedValue(new Error('b down')) };
+    const sink = createMultiInsightSink({ sinks: [a, b] });
+
+    await expect(sink.postInsight('msg')).rejects.toBeInstanceOf(AggregateError);
   });
 
   it('is a no-op with no sinks', async () => {
-    const log = silentLogger();
-    const sink = createMultiInsightSink({ sinks: [], log });
+    const sink = createMultiInsightSink({ sinks: [] });
     await expect(sink.postInsight('msg')).resolves.toBeUndefined();
-    expect(log.warns).toHaveLength(0);
   });
 });

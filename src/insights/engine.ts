@@ -200,7 +200,13 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
         return formatFindingsFallback(novel);
       });
 
-    await opts.insightSink.postInsight(text);
+    try {
+      await opts.insightSink.postInsight(text);
+    } catch (e) {
+      // Notifier already logged the cause; record outcome and skip dedupe so the next poll retries.
+      log.warn({ findingCount: novel.length, output: config.output, ...logErr(e) }, 'post findings failed');
+      return;
+    }
     for (const f of novel) dedupe.mark(f.id);
     log.info({ findingCount: novel.length, output: config.output }, 'posted findings');
   }

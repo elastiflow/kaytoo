@@ -1,5 +1,3 @@
-import type { Logger } from 'pino';
-import { logErr } from '../logging/logger.js';
 import type { ChatAddress } from '../chat/types.js';
 import type { Notifier } from './notifier.js';
 
@@ -13,18 +11,17 @@ export function createPlatformInsightSink(notifier: Notifier, address: ChatAddre
   };
 }
 
-export function createMultiInsightSink(opts: {
-  sinks: readonly InsightSink[];
-  log: Logger;
-}): InsightSink {
-  const { sinks, log } = opts;
+// Resolves if any sink succeeds; rejects only when every sink fails. Inner
+// notifiers own per-sink failure logging.
+export function createMultiInsightSink(opts: { sinks: readonly InsightSink[] }): InsightSink {
+  const { sinks } = opts;
   return {
     async postInsight(text: string): Promise<void> {
       if (sinks.length === 0) return;
       const results = await Promise.allSettled(sinks.map((s) => s.postInsight(text)));
-      for (const [i, r] of results.entries()) {
-        if (r.status === 'rejected') log.warn({ ...logErr(r.reason), sinkIndex: i }, 'insight sink failed');
-      }
+      const reasons = results.flatMap((r) => (r.status === 'rejected' ? [r.reason] : []));
+      if (reasons.length !== sinks.length) return;
+      throw reasons.length === 1 ? reasons[0] : new AggregateError(reasons, 'all insight sinks failed');
     },
   };
 }
