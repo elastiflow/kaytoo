@@ -1,3 +1,13 @@
+## [v0.2.0] - 2026-05-12
+
+### Features
+
+- **chat:** Support Matrix and Mattermost standalone (#12)
+
+[v0.1.1..v0.2.0](https://github.com/elastiflow/kaytoo/compare/v0.1.1...v0.2.0)
+
+
+
 ## [v0.1.1] - 2026-04-27
 
 ### Bug Fixes

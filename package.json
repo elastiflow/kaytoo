@@ -1,6 +1,6 @@
 {
   "name": "kaytoo",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "ElastiFlow flow-index chat agent with scheduled insights",
   "private": true,
   "type": "module",
