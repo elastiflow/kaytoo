@@ -17,6 +17,7 @@ vi.mock('matrix-js-sdk', () => ({
     stopClient: vi.fn().mockResolvedValue(undefined),
     joinRoom: vi.fn().mockResolvedValue({}),
     getUserId: vi.fn().mockReturnValue('@bot:hs'),
+    loginRequest: vi.fn().mockResolvedValue({ access_token: 'srv-tok', user_id: '@bot:hs' }),
   })),
 }));
 
@@ -79,7 +80,7 @@ describe('startMatrixAdapter', () => {
     const onEvent = vi.fn().mockResolvedValue(undefined);
     const { stop, client } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'WARN',
       defaultRoomId: '!def:hs',
       onEvent,
@@ -99,7 +100,7 @@ describe('startMatrixAdapter', () => {
     const onEvent = vi.fn().mockResolvedValue(undefined);
     const { stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       onEvent,
     });
@@ -125,7 +126,7 @@ describe('startMatrixAdapter', () => {
     const onEvent = vi.fn().mockResolvedValue(undefined);
     const { stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       onEvent,
     });
@@ -150,7 +151,7 @@ describe('startMatrixAdapter', () => {
     const onEvent = vi.fn().mockResolvedValue(undefined);
     const { stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       onEvent,
     });
@@ -172,7 +173,7 @@ describe('startMatrixAdapter', () => {
     );
     const { client, stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       onEvent: vi.fn().mockResolvedValue(undefined),
     });
@@ -189,7 +190,7 @@ describe('startMatrixAdapter', () => {
     );
     const { client, stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       onEvent: vi.fn().mockResolvedValue(undefined),
     });
@@ -220,7 +221,7 @@ describe('startMatrixAdapter', () => {
     );
     const { stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       defaultRoomId: '!bad:hs',
       onEvent: vi.fn().mockResolvedValue(undefined),
@@ -233,7 +234,7 @@ describe('startMatrixAdapter', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
     const { stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       onEvent: vi.fn().mockResolvedValue(undefined),
     });
@@ -245,11 +246,72 @@ describe('startMatrixAdapter', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
     const { stop } = await startMatrixAdapter({
       homeserverUrl: 'https://hs',
-      accessToken: 'tok',
+      auth: { accessToken: 'tok' },
       matrixSdkLevel: 'ERROR',
       onEvent: vi.fn().mockResolvedValue(undefined),
     });
     expect(vi.mocked(createClient).mock.calls[0]![0]).not.toHaveProperty('userId');
     await stop();
+  });
+
+  it('uses matrix-js-sdk login with m.login.password and no token in createClient', async () => {
+    const { stop, client } = await startMatrixAdapter({
+      homeserverUrl: 'https://hs',
+      auth: { user: 'kaytoo', password: 'pw' },
+      matrixSdkLevel: 'ERROR',
+      onEvent: vi.fn().mockResolvedValue(undefined),
+    });
+    const createArgs = vi.mocked(createClient).mock.calls[0]![0] as {
+      accessToken?: string;
+      userId?: string;
+    };
+    expect(createArgs.accessToken).toBeUndefined();
+    expect(createArgs.userId).toBeUndefined();
+    expect(client.loginRequest).toHaveBeenCalledWith({
+      type: 'm.login.password',
+      identifier: { type: 'm.id.user', user: 'kaytoo' },
+      password: 'pw',
+      initial_device_display_name: 'kaytoo',
+    });
+    await stop();
+  });
+
+  it('strips MXID prefix/suffix when building login identifier', async () => {
+    const { stop, client } = await startMatrixAdapter({
+      homeserverUrl: 'https://hs',
+      auth: { user: '@kaytoo:matrix.example.org', password: 'pw' },
+      matrixSdkLevel: 'ERROR',
+      onEvent: vi.fn().mockResolvedValue(undefined),
+    });
+    expect(client.loginRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: 'kaytoo' },
+      }),
+    );
+    await stop();
+  });
+
+  it('propagates errors from matrix-js-sdk login', async () => {
+    vi.mocked(createClient).mockImplementationOnce(
+      () =>
+        ({
+          on: vi.fn(),
+          removeListener: vi.fn(),
+          startClient: vi.fn().mockResolvedValue(undefined),
+          stopClient: vi.fn().mockResolvedValue(undefined),
+          joinRoom: vi.fn().mockResolvedValue({}),
+          getUserId: vi.fn().mockReturnValue('@bot:hs'),
+          loginRequest: vi.fn().mockRejectedValue(new Error('M_FORBIDDEN: Invalid password')),
+        }) as unknown as MatrixClient,
+    );
+    await expect(
+      startMatrixAdapter({
+        homeserverUrl: 'https://hs',
+        auth: { user: 'kaytoo', password: 'wrong' },
+        matrixSdkLevel: 'ERROR',
+        onEvent: vi.fn().mockResolvedValue(undefined),
+      }),
+    ).rejects.toThrow(/M_FORBIDDEN/);
   });
 });

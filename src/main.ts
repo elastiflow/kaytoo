@@ -110,11 +110,17 @@ if (config.output === 'console') {
   const slackNotifier =
     slackWeb && config.slack ? slackChat.createSlackChatNotifier({ slack: slackWeb }) : undefined;
 
-  const matrixNotifier: Notifier | undefined = config.matrix
+  const matrixAuth = config.matrix?.accessToken
+    ? { accessToken: config.matrix.accessToken }
+    : config.matrix?.user && config.matrix?.password
+      ? { user: config.matrix.user, password: config.matrix.password }
+      : undefined;
+
+  const matrixNotifier: Notifier | undefined = config.matrix && matrixAuth
     ? createPromiseBackedNotifier(
         startMatrixAdapter({
           homeserverUrl: config.matrix.homeserver,
-          accessToken: config.matrix.accessToken,
+          auth: matrixAuth,
           matrixSdkLevel: config.logging.matrixSdkLevel,
           defaultRoomId: config.matrix.defaultRoomId,
           onEvent,

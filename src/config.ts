@@ -64,8 +64,14 @@ const configSchema = z
     matrix: z
       .object({
         homeserver: z.string().url(),
-        accessToken: z.string().min(1),
         defaultRoomId: z.string().min(1),
+        accessToken: z.string().min(1).optional(),
+        user: z.string().min(1).optional(),
+        password: z.string().min(1).optional(),
+      })
+      .refine((m) => !!m.accessToken || (!!m.user && !!m.password), {
+        message: 'Matrix requires MATRIX_ACCESS_TOKEN or both MATRIX_USER and MATRIX_PASSWORD',
+        path: ['accessToken'],
       })
       .optional(),
     mattermost: z
@@ -161,13 +167,18 @@ function slackFromEnv(env: NodeJS.ProcessEnv) {
 }
 
 function matrixFromEnv(env: NodeJS.ProcessEnv) {
-  if (!optStr(env.MATRIX_HOMESERVER) && !optStr(env.MATRIX_ACCESS_TOKEN) && !optStr(env.MATRIX_DEFAULT_ROOM_ID)) {
-    return undefined;
-  }
+  const homeserver = optStr(env.MATRIX_HOMESERVER);
+  const accessToken = optStr(env.MATRIX_ACCESS_TOKEN);
+  const user = optStr(env.MATRIX_USER);
+  const password = optStr(env.MATRIX_PASSWORD);
+  const defaultRoomId = optStr(env.MATRIX_DEFAULT_ROOM_ID);
+  if (!homeserver && !accessToken && !user && !password && !defaultRoomId) return undefined;
   return {
-    homeserver: optStr(env.MATRIX_HOMESERVER),
-    accessToken: optStr(env.MATRIX_ACCESS_TOKEN),
-    defaultRoomId: optStr(env.MATRIX_DEFAULT_ROOM_ID),
+    homeserver,
+    defaultRoomId,
+    ...(accessToken ? { accessToken } : {}),
+    ...(user ? { user } : {}),
+    ...(password ? { password } : {}),
   };
 }
 

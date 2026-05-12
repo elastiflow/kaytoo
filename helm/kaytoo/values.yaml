@@ -33,6 +33,9 @@ config:
   matrix:
     homeserver: ""
     defaultRoomId: ""
+    # Optional username for password login (alternative to secrets.matrixAccessToken).
+    # Pair with secrets.matrixPassword. Accepts the localpart (`kaytoo`) or full MXID (`@kaytoo:example.org`).
+    user: ""
   mattermost:
     url: ""
     channelId: ""
@@ -54,6 +57,8 @@ secrets:
   slackBotToken: ""
   slackAppToken: ""
   matrixAccessToken: ""
+  # Set instead of matrixAccessToken when the homeserver only allows password login.
+  matrixPassword: ""
   mattermostToken: ""
   opensearchUsername: ""
   opensearchPassword: ""
