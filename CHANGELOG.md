@@ -1,3 +1,16 @@
+## [v0.4.0] - 2026-05-12
+
+### Bug Fixes
+
+- **matrix,insights:** Louder unjoined-room error, outcome-only post log (#18)
+### Features
+
+- **llm,insights:** OpenWebUI probe, clearer errors, high-signal insights (#19)
+
+[v0.3.1..v0.4.0](https://github.com/elastiflow/kaytoo/compare/v0.3.1...v0.4.0)
+
+
+
 ## [v0.3.1] - 2026-05-12
 
 ### Bug Fixes
