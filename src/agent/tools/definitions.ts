@@ -104,7 +104,7 @@ export function buildToolDefinitionList(opts: {
     },
     {
       name: 'topConversations5Tuple',
-      description: 'Top source→destination conversations by bytes using multi_terms on (srcIp,dstIp,srcPort,dstPort,proto).',
+      description: 'Top source->destination conversations by bytes using multi_terms on (srcIp,dstIp,srcPort,dstPort,proto).',
       argsSchema: {
         type: 'object',
         properties: {
@@ -210,7 +210,7 @@ export function buildToolDefinitionList(opts: {
     },
     {
       name: 'namespaceEdgesByBytes',
-      description: 'Top cross-namespace edges by bytes (source namespace → destination namespace).',
+      description: 'Top cross-namespace edges by bytes (source namespace -> destination namespace).',
       argsSchema: {
         type: 'object',
         properties: {

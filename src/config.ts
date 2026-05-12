@@ -65,7 +65,7 @@ const configSchema = z
       .object({
         homeserver: z.string().url(),
         accessToken: z.string().min(1),
-        defaultRoomId: z.string().min(1).optional(),
+        defaultRoomId: z.string().min(1),
       })
       .optional(),
     mattermost: z
@@ -97,7 +97,6 @@ const configSchema = z
       includeDebugBodies: z.string().default('false').pipe(boolFromString),
       redactPaths: commaList,
       matrixSdkLevel: matrixSdkLogLevelSchema,
-      nodeEnv: z.string().min(1).default('development'),
     }),
     conversation: z.object({
       /** When set, persist thread memory to this JSON file; otherwise in-process memory only. */
@@ -124,15 +123,24 @@ const configSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.output !== 'chat') return;
+
     const s = data.slack;
-    if (!s?.botToken) {
-      ctx.addIssue({ code: 'custom', message: 'SLACK_BOT_TOKEN is required when output is chat', path: ['slack', 'botToken'] });
+    const partialSlack = !!(s?.botToken || s?.channelId || s?.appToken);
+    if (partialSlack) {
+      const need = (ok: boolean, path: ['slack', string], msg: string) => {
+        if (!ok) ctx.addIssue({ code: 'custom', message: msg, path });
+      };
+      need(!!s?.botToken, ['slack', 'botToken'], 'SLACK_BOT_TOKEN is required when Slack env is set');
+      need(!!s?.channelId, ['slack', 'channelId'], 'SLACK_CHANNEL_ID is required when Slack env is set');
+      need(!!s?.appToken, ['slack', 'appToken'], 'SLACK_APP_TOKEN is required when Slack env is set');
     }
-    if (!s?.channelId) {
-      ctx.addIssue({ code: 'custom', message: 'SLACK_CHANNEL_ID is required when output is chat', path: ['slack', 'channelId'] });
-    }
-    if (!s?.appToken) {
-      ctx.addIssue({ code: 'custom', message: 'SLACK_APP_TOKEN is required when output is chat', path: ['slack', 'appToken'] });
+
+    if (!data.slack && !data.matrix && !data.mattermost) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Chat mode requires Slack, Matrix, or Mattermost configuration',
+        path: ['output'],
+      });
     }
   });
 
@@ -143,10 +151,52 @@ export type GetConfigOptions = {
   outputOverride?: KaytooConfig['output'];
 };
 
+function slackFromEnv(env: NodeJS.ProcessEnv) {
+  if (!optStr(env.SLACK_BOT_TOKEN) && !optStr(env.SLACK_CHANNEL_ID) && !optStr(env.SLACK_APP_TOKEN)) return undefined;
+  return {
+    botToken: optStr(env.SLACK_BOT_TOKEN),
+    channelId: optStr(env.SLACK_CHANNEL_ID),
+    appToken: optStr(env.SLACK_APP_TOKEN),
+  };
+}
+
+function matrixFromEnv(env: NodeJS.ProcessEnv) {
+  if (!optStr(env.MATRIX_HOMESERVER) && !optStr(env.MATRIX_ACCESS_TOKEN) && !optStr(env.MATRIX_DEFAULT_ROOM_ID)) {
+    return undefined;
+  }
+  return {
+    homeserver: optStr(env.MATRIX_HOMESERVER),
+    accessToken: optStr(env.MATRIX_ACCESS_TOKEN),
+    defaultRoomId: optStr(env.MATRIX_DEFAULT_ROOM_ID),
+  };
+}
+
+function mattermostFromEnv(env: NodeJS.ProcessEnv) {
+  if (!env.MATTERMOST_URL || !env.MATTERMOST_TOKEN || !env.MATTERMOST_CHANNEL_ID) return undefined;
+  return {
+    url: env.MATTERMOST_URL,
+    token: env.MATTERMOST_TOKEN,
+    channelId: env.MATTERMOST_CHANNEL_ID,
+    botUserId: env.MATTERMOST_BOT_USER_ID,
+  };
+}
+
+function hasMattermostEnvHint(env: NodeJS.ProcessEnv): boolean {
+  return !!(
+    optStr(env.MATTERMOST_URL) ||
+    optStr(env.MATTERMOST_TOKEN) ||
+    optStr(env.MATTERMOST_CHANNEL_ID) ||
+    optStr(env.MATTERMOST_BOT_USER_ID)
+  );
+}
+
+function envHintsChatOutput(env: NodeJS.ProcessEnv): boolean {
+  return !!(slackFromEnv(env) || matrixFromEnv(env) || hasMattermostEnvHint(env));
+}
+
 function resolveOutput(env: NodeJS.ProcessEnv, opts?: GetConfigOptions): KaytooConfig['output'] {
   if (opts?.outputOverride) return opts.outputOverride;
-  const hasAnySlackEnv = !!(optStr(env.SLACK_BOT_TOKEN) || optStr(env.SLACK_CHANNEL_ID) || optStr(env.SLACK_APP_TOKEN));
-  return hasAnySlackEnv ? 'chat' : 'console';
+  return envHintsChatOutput(env) ? 'chat' : 'console';
 }
 
 function resolveSearchBackend(env: NodeJS.ProcessEnv): KaytooConfig['search']['backend'] {
@@ -193,37 +243,13 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, opts?: GetConfig
   const backend = resolveSearchBackend(env);
   const picked = pickSearchVars(env, backend);
 
-  const hasAnySlackEnv = !!(optStr(env.SLACK_BOT_TOKEN) || optStr(env.SLACK_CHANNEL_ID) || optStr(env.SLACK_APP_TOKEN));
-  const slack =
-    hasAnySlackEnv || output === 'chat'
-      ? {
-          botToken: optStr(env.SLACK_BOT_TOKEN),
-          channelId: optStr(env.SLACK_CHANNEL_ID),
-          appToken: optStr(env.SLACK_APP_TOKEN),
-        }
-      : undefined;
-
+  const kb = optStr(env.KAYTOO_KB_DOCS_DIR);
   const parsed = configSchema.safeParse({
     output,
     httpChatBind: optStr(env.KAYTOO_HTTP_CHAT_BIND),
-    slack,
-    matrix:
-      env.MATRIX_HOMESERVER && env.MATRIX_ACCESS_TOKEN
-        ? {
-            homeserver: env.MATRIX_HOMESERVER,
-            accessToken: env.MATRIX_ACCESS_TOKEN,
-            defaultRoomId: env.MATRIX_DEFAULT_ROOM_ID,
-          }
-        : undefined,
-    mattermost:
-      env.MATTERMOST_URL && env.MATTERMOST_TOKEN && env.MATTERMOST_CHANNEL_ID
-        ? {
-            url: env.MATTERMOST_URL,
-            token: env.MATTERMOST_TOKEN,
-            channelId: env.MATTERMOST_CHANNEL_ID,
-            botUserId: env.MATTERMOST_BOT_USER_ID,
-          }
-        : undefined,
+    slack: slackFromEnv(env),
+    matrix: matrixFromEnv(env),
+    mattermost: mattermostFromEnv(env),
     search: {
       backend,
       url: picked.url,
@@ -240,14 +266,9 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, opts?: GetConfig
     },
     behavior: {},
     thresholds: {},
-    logging: {
-      level: env.LOG_LEVEL,
-    },
-    conversation: {
-    },
-    knowledge: {
-      docsDir: optStr(env.KAYTOO_KB_DOCS_DIR),
-    },
+    logging: { level: env.LOG_LEVEL },
+    conversation: {},
+    knowledge: kb ? { docsDir: kb } : {},
     agent: {
       mcpJsonRpcUrl: optStr(env.KAYTOO_MCP_JSONRPC_URL),
       mcpJsonRpcBearer: optStr(env.KAYTOO_MCP_JSONRPC_BEARER),

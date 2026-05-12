@@ -1,11 +1,11 @@
 import type { Logger } from 'pino';
-import type { SlackNotifier } from './slack.js';
+import type { InsightSink } from './insightSink.js';
 
-/** Same contract as Slack `postMessage`; writes insight text to structured logs (stdout with JSON logger). */
-export function createConsoleInsightSink(log: Logger): SlackNotifier {
+/** Writes insight text to structured logs (stdout with JSON logger). Used in console mode. */
+export function createConsoleInsightSink(log: Logger): InsightSink {
   return {
-    async postMessage(input: { channel: string; text: string }) {
-      log.info({ channel: input.channel, insightText: input.text }, 'insight_post');
+    async postInsight(text: string) {
+      log.info({ channel: 'console', insightText: text }, 'insight_post');
     },
   };
 }

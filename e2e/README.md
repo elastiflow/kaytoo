@@ -13,7 +13,7 @@ Local stack: **Mermin** + OpenSearch ([`k8s/mermin-stack-values.yaml`](k8s/mermi
 | `npm run e2e:logs` | Tail Kaytoo in-cluster |
 | `npm run e2e:dev` | Run Kaytoo on the host against forwarded OpenSearch |
 
-**Host Helm is not required** — the bootstrap Job runs Helm in-cluster.
+**Host Helm is not required** - the bootstrap Job runs Helm in-cluster.
 
 ## Stack
 
@@ -46,9 +46,9 @@ Created during `e2e:up` (and by `npm run e2e:llm-overlay` for the LLM file only)
 
 | Artifact | Role |
 | --- | --- |
-| `kubeconfig-kind-kaytoo-e2e` | Host / `kind` CLI — API server `https://127.0.0.1:…` |
-| `kubeconfig-kind-kaytoo-e2e.docker` | Docker `kubectl port-forward` sidecars — same cluster, API host `host.docker.internal` |
-| `kaytoo-values.rendered.yaml` | [`k8s/kaytoo-values.yaml`](k8s/kaytoo-values.yaml) + real `OPENSEARCH_PASSWORD` → copied to node as `kaytoo-values.yaml` (**secrets**) |
+| `kubeconfig-kind-kaytoo-e2e` | Host / `kind` CLI - API server `https://127.0.0.1:...` |
+| `kubeconfig-kind-kaytoo-e2e.docker` | Docker `kubectl port-forward` sidecars - same cluster, API host `host.docker.internal` |
+| `kaytoo-values.rendered.yaml` | [`k8s/kaytoo-values.yaml`](k8s/kaytoo-values.yaml) + real `OPENSEARCH_PASSWORD` -> copied to node as `kaytoo-values.yaml` (**secrets**) |
 | `values-e2e.llm.local.json` | LLM Helm `-f` from `.env` via `e2e/write-e2e-llm-overlay.mjs` |
 
 Legacy `e2e/.kubeconfig-kind-*` at the `e2e/` root is moved into `.generated/` on first use.
@@ -60,10 +60,10 @@ npm run e2e:up
 ```
 
 1. kind cluster `kaytoo-e2e` (prompts if it already exists).
-2. `docker build` → `kaytoo-e2e:local` → `kind load`.
+2. `docker build` -> `kaytoo-e2e:local` -> `kind load`.
 3. Writes `.generated/` (LLM JSON, rendered Kaytoo values), copies chart + those files to the control-plane node (`/kaytoo-chart/`), applies bootstrap Job.
-4. Job: metrics-server, Mermin stack, `helm upgrade -i kaytoo … -f kaytoo-values.yaml -f values-e2e.llm.local.json`.
-5. Docker-based port-forwards: OpenSearch **9200**, Dashboards **5601**, chat **18080** → `8080`.
+4. Job: metrics-server, Mermin stack, `helm upgrade -i kaytoo ... -f kaytoo-values.yaml -f values-e2e.llm.local.json`.
+5. Docker-based port-forwards: OpenSearch **9200**, Dashboards **5601**, chat **18080** -> `8080`.
 
 **URLs after up:** OpenSearch `https://127.0.0.1:9200`, Dashboards `http://localhost:5601`, chat `http://127.0.0.1:18080`.
 

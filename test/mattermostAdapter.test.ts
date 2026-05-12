@@ -53,7 +53,7 @@ describe('startMattermostAdapter', () => {
     vi.clearAllMocks();
   });
 
-  it('connects with https→wss URL, authenticates, emits posted messages', async () => {
+  it('connects with https->wss URL, authenticates, emits posted messages', async () => {
     const onEvent = vi.fn().mockResolvedValue(undefined);
     const { stop } = startMattermostAdapter({
       baseUrl: 'https://mm.example/',

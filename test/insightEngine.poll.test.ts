@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Logger as PinoLogger } from 'pino';
-import type { KaytooConfig } from '../src/config.js';
 import { getConfig } from '../src/config.js';
 import type { Finding } from '../src/detectors/types.js';
 import { findingSeverityRank } from '../src/insights/pollUtils.js';
@@ -28,7 +27,7 @@ const llmTestEnv = {
 } as const;
 
 function mockInsightSink() {
-  return { postMessage: vi.fn().mockResolvedValue(undefined) };
+  return { postInsight: vi.fn().mockResolvedValue(undefined) };
 }
 
 function makeInsightsLoggerStub() {
@@ -160,7 +159,7 @@ describe('startInsightEngine', () => {
       config: consoleSearchConfig(),
       insightSink,
     });
-    expect(insightSink.postMessage).not.toHaveBeenCalled();
+    expect(insightSink.postInsight).not.toHaveBeenCalled();
     stop();
   });
 
@@ -173,10 +172,7 @@ describe('startInsightEngine', () => {
     await startInsightEngine({ config: consoleSearchConfig(), insightSink });
 
     expect(eng.summarizeFindings).toHaveBeenCalled();
-    expect(insightSink.postMessage).toHaveBeenCalledWith({
-      channel: 'console',
-      text: 'summary text',
-    });
+    expect(insightSink.postInsight).toHaveBeenCalledWith('summary text');
   });
 
   it('falls back to formatFindingsFallback when summarization fails', async () => {
@@ -188,7 +184,7 @@ describe('startInsightEngine', () => {
     const insightSink = mockInsightSink();
     await startInsightEngine({ config: consoleSearchConfig(), insightSink });
 
-    const text = insightSink.postMessage.mock.calls[0]![0]!.text;
+    const text = insightSink.postInsight.mock.calls[0]![0];
     expect(text).toMatch(/Kaytoo|insight/i);
   });
 
@@ -200,7 +196,7 @@ describe('startInsightEngine', () => {
     await startInsightEngine({ config: elasticConsoleConfig(), insightSink });
 
     expect(eng.queryTopEgressBySource).toHaveBeenCalled();
-    expect(insightSink.postMessage).not.toHaveBeenCalled();
+    expect(insightSink.postInsight).not.toHaveBeenCalled();
   });
 
   it('dedupes repeated findings across polls', async () => {
@@ -215,12 +211,12 @@ describe('startInsightEngine', () => {
     const insightSink = mockInsightSink();
     const { stop } = await startInsightEngine({ config, insightSink });
 
-    expect(insightSink.postMessage).toHaveBeenCalledTimes(1);
+    expect(insightSink.postInsight).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(1500);
     await vi.runOnlyPendingTimersAsync();
 
-    expect(insightSink.postMessage).toHaveBeenCalledTimes(1);
+    expect(insightSink.postInsight).toHaveBeenCalledTimes(1);
     stop();
   });
 
@@ -253,7 +249,7 @@ describe('startInsightEngine', () => {
     await startInsightEngine({ config: consoleSearchConfig(), insightSink });
 
     expect(eng.summarizeFindings).toHaveBeenCalled();
-    expect(insightSink.postMessage).toHaveBeenCalled();
+    expect(insightSink.postInsight).toHaveBeenCalled();
     const summarized = eng.summarizeFindings.mock.calls[0]![0] as { findings: { id: string }[] };
     expect(summarized.findings.some((f) => f.id.startsWith('egress:'))).toBe(true);
   });
@@ -268,32 +264,13 @@ describe('startInsightEngine', () => {
     await expect(startInsightEngine({ config: consoleSearchConfig(), insightSink })).resolves.toBeDefined();
   });
 
-  it('uses slack channel when output is chat', async () => {
+  it('forwards summary text to insightSink.postInsight when output is chat', async () => {
     eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [sampleFinding], healthyEmpty: false });
     eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: true });
     const { startInsightEngine } = await import('../src/insights/engine.js');
     const insightSink = mockInsightSink();
     await startInsightEngine({ config: slackChatSearchConfig(), insightSink });
-    expect(insightSink.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ channel: 'C999', text: 'summary text' }),
-    );
-  });
-
-  it('uses empty channel when chat output has no slack channelId', async () => {
-    eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [sampleFinding], healthyEmpty: false });
-    eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: true });
-    const base = consoleSearchConfig();
-    const cfg = {
-      ...base,
-      output: 'chat' as const,
-      slack: { botToken: 'xoxb-test', appToken: 'xapp-test', channelId: undefined },
-    } as KaytooConfig;
-    const { startInsightEngine } = await import('../src/insights/engine.js');
-    const insightSink = mockInsightSink();
-    await startInsightEngine({ config: cfg, insightSink });
-    expect(insightSink.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ channel: '', text: 'summary text' }),
-    );
+    expect(insightSink.postInsight).toHaveBeenCalledWith('summary text');
   });
 
   it('handles alerting fetch rejection like a failed backend', async () => {
@@ -323,7 +300,7 @@ describe('startInsightEngine', () => {
     const { startInsightEngine } = await import('../src/insights/engine.js');
     const insightSink = mockInsightSink();
     await startInsightEngine({ config: consoleSearchConfig(), insightSink });
-    expect(insightSink.postMessage).not.toHaveBeenCalled();
+    expect(insightSink.postInsight).not.toHaveBeenCalled();
   });
 
   it('sorts multiple heuristic findings by severity (comparator runs)', async () => {

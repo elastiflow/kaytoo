@@ -11,7 +11,6 @@ export function useSilentLogging(
     initLogging({
       level: 'silent',
       redactPaths: [],
-      nodeEnv: 'test',
       destination: pino.destination('/dev/null'),
     });
   });

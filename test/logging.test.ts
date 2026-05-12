@@ -28,7 +28,7 @@ describe('logging', () => {
 
   it('emits JSON with service and redacts password', () => {
     const { dest, dir, readLines } = makeSyncFileDest();
-    initLogging({ level: 'info', redactPaths: [], nodeEnv: 'test', destination: dest });
+    initLogging({ level: 'info', redactPaths: [], destination: dest });
     getLogger({ component: 'test' }).info({ password: 'secret', ok: true }, 'hello');
     const lines = readLines();
     rmSync(dir, { recursive: true, force: true });
@@ -44,7 +44,7 @@ describe('logging', () => {
 
   it('merges AsyncLocalStorage context into records', () => {
     const { dest, dir, readLines } = makeSyncFileDest();
-    initLogging({ level: 'info', redactPaths: [], nodeEnv: 'test', destination: dest });
+    initLogging({ level: 'info', redactPaths: [], destination: dest });
     runWithLogContext({ pollId: 'pid-1' }, () => {
       getLogger({ component: 'insights' }).info('tick');
     });
@@ -57,7 +57,7 @@ describe('logging', () => {
 
   it('supports custom redact paths', () => {
     const { dest, dir, readLines } = makeSyncFileDest();
-    initLogging({ level: 'info', redactPaths: ['customSecret'], nodeEnv: 'test', destination: dest });
+    initLogging({ level: 'info', redactPaths: ['customSecret'], destination: dest });
     getLogger({ component: 't' }).info({ customSecret: 'hide', x: 1 }, 'm');
     const lines = readLines();
     rmSync(dir, { recursive: true, force: true });

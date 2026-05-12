@@ -33,8 +33,6 @@ function readPackageVersion(): string {
 export type LoggingInit = {
   level: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
   redactPaths: string[];
-  /** Pino `base.env`; supplied by `getConfig`, not read from `process.env` in this module. */
-  nodeEnv: string;
   destination?: DestinationStream;
 };
 
@@ -44,7 +42,7 @@ export function initLogging(opts: LoggingInit): PinoLogger {
     level: opts.level,
     base: {
       service: 'kaytoo',
-      env: opts.nodeEnv,
+      env: process.env.NODE_ENV ?? 'development',
       version: readPackageVersion(),
     },
     redact: { paths: redact, censor: '[Redacted]' },
@@ -66,7 +64,6 @@ export function getRootLogger(): PinoLogger {
     root.current = initLogging({
       level: isTest ? 'silent' : 'info',
       redactPaths: [],
-      nodeEnv: isTest ? 'test' : 'development',
     });
   }
   return root.current;
