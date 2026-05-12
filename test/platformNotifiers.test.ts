@@ -31,19 +31,28 @@ describe('slackChatNotifier', () => {
 
 describe('matrixNotifier', () => {
   it('rejects non-matrix platform', async () => {
-    const n = createMatrixNotifier({ sendTextMessage: vi.fn() } as unknown as MatrixClient);
+    const n = createMatrixNotifier({ sendHtmlMessage: vi.fn() } as unknown as MatrixClient);
     await expect(n.post({ address: { platform: 'slack', channelId: 'C1' }, text: 'x' })).rejects.toThrow(
       /Matrix notifier cannot post to platform=slack/,
     );
   });
 
-  it('sendTextMessage arity for main vs thread', async () => {
-    const sendTextMessage = vi.fn().mockResolvedValue(undefined);
-    const n = createMatrixNotifier({ sendTextMessage } as unknown as MatrixClient);
-    await n.post({ address: { platform: 'matrix', channelId: '!r', threadId: 'main' }, text: 'a' });
-    expect(sendTextMessage).toHaveBeenLastCalledWith('!r', 'a');
-    await n.post({ address: { platform: 'matrix', channelId: '!r', threadId: '$e' }, text: 'b' });
-    expect(sendTextMessage).toHaveBeenLastCalledWith('!r', '$e', 'b');
+  it('sendHtmlMessage arity for main vs thread', async () => {
+    const sendHtmlMessage = vi.fn().mockResolvedValue(undefined);
+    const n = createMatrixNotifier({ sendHtmlMessage } as unknown as MatrixClient);
+    await n.post({ address: { platform: 'matrix', channelId: '!r', threadId: 'main' }, text: '**a**' });
+    expect(sendHtmlMessage).toHaveBeenLastCalledWith(
+      '!r',
+      expect.any(String),
+      expect.stringContaining('<strong>a</strong>'),
+    );
+    await n.post({ address: { platform: 'matrix', channelId: '!r', threadId: '$e' }, text: '**b**' });
+    expect(sendHtmlMessage).toHaveBeenLastCalledWith(
+      '!r',
+      '$e',
+      expect.any(String),
+      expect.stringContaining('<strong>b</strong>'),
+    );
   });
 });
 
