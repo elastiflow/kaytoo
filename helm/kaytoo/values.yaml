@@ -50,7 +50,10 @@ config:
     mcpUrl: ""
   llm:
     baseUrl: ""
-    model: "gpt-5.3-codex"
+    # Required. Use the exact model name your OpenAI-compatible backend exposes,
+    # e.g. "gpt-4o" for OpenAI, "llama3.1" for Ollama,
+    # or "unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL" for OpenWebUI/LiteLLM.
+    model: ""
 
 secrets:
   existingSecret: ""

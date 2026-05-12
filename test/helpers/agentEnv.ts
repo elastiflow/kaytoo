@@ -3,7 +3,7 @@ export const MINIMAL_AGENT_ENV = {
   OPENSEARCH_URL: 'https://os.test',
   OPENSEARCH_USERNAME: 'a',
   OPENSEARCH_PASSWORD: 'b',
-  LLM_BASE_URL: 'https://llm.test',
+  LLM_BASE_URL: 'https://llm.test/v1',
   LLM_API_KEY: 'k',
 } as const;
 

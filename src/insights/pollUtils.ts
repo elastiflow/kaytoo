@@ -17,3 +17,23 @@ export function findingSeverityRank(s: Finding['severity']): number {
       return 1;
   }
 }
+
+export type DedupeLike = { has(key: string): boolean };
+
+export const INSIGHT_POST_MAX = 3;
+
+export function insightSeverityEligibleForPost(s: Finding['severity']): boolean {
+  return s === 'medium' || s === 'high';
+}
+
+/** Novel (not in dedupe), medium|high only, severity-sorted, capped for proactive post. */
+export function selectNovelInsightPostBatch(findings: Finding[], dedupe: DedupeLike): Finding[] {
+  const novel = findings.filter((f) => !dedupe.has(f.id));
+  return novel
+    .filter((f) => insightSeverityEligibleForPost(f.severity))
+    .sort(
+      (a, b) =>
+        findingSeverityRank(b.severity) - findingSeverityRank(a.severity) || a.id.localeCompare(b.id),
+    )
+    .slice(0, INSIGHT_POST_MAX);
+}

@@ -132,9 +132,9 @@ Kaytoo is configured via environment variables. For a minimal example, see `.env
 
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
-| `LLM_BASE_URL` | yes | - | Example: `http://openwebui:3000` or `http://ollama-proxy:11434`. |
+| `LLM_BASE_URL` | yes | - | Example: `http://openwebui:3000` or `http://ollama-proxy:11434`. If the path is bare (no `/v1` or `/api/v1`), Kaytoo probes `/api/v1/models` then `/v1/models` once at startup and pins the responder. To skip the probe, include the version path (e.g. `http://openwebui:3000/api/v1`). |
 | `LLM_API_KEY` | yes | - | Some self-hosted backends accept an empty string. |
-| `LLM_MODEL` | no | `gpt-5.4-codex` | - |
+| `LLM_MODEL` | no | `gpt-5.4-codex` | Must match a name your backend exposes (`/api/v1/models` or `/v1/models`). E.g. `gpt-4o`, `llama3.1`, `unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL`. A wrong name typically produces a LiteLLM `'NoneType' object has no attribute 'startswith'` 400. |
 
 **Conversation agent (chat adapters: Slack / Matrix / Mattermost)**
 
