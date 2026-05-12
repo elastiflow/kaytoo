@@ -2,7 +2,7 @@ apiVersion: v2
 name: kaytoo
 description: Kaytoo - Slack + OpenSearch insight bot
 type: application
-version: 0.1.1
-appVersion: "0.1.1"
+version: 0.2.0
+appVersion: "0.2.0"
 annotations:
   artifacthub.io/license: Apache-2.0
