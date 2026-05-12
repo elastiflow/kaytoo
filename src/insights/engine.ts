@@ -5,17 +5,11 @@ import { getLogger, logErr } from '../logging/logger.js';
 import { runWithLogContextAsync } from '../logging/context.js';
 import { createSearchClient } from '../search/client.js';
 import { waitForOpenSearchFieldMapping } from '../opensearch/waitForFieldMapping.js';
-import {
-  queryPortscanCandidates,
-  queryRareDestinationsSignificantTerms,
-  queryTopEgressBySource,
-} from '../opensearch/queries/index.js';
+import { queryPortscanCandidates, queryTopEgressBySource } from '../opensearch/queries/index.js';
 import { detectEgressAnomalies } from '../detectors/egressAnomaly.js';
 import { detectPortScans } from '../detectors/portScan.js';
-import { detectRareDestinations } from '../detectors/rareDest.js';
 import type { Finding } from '../detectors/types.js';
 import { createOpenAiCompatClient } from '../llm/openaiCompat.js';
-import { formatFindingsFallback } from '../notify/format.js';
 import type { InsightSink } from '../notify/insightSink.js';
 import { DedupeStore } from '../state/dedupe.js';
 import { thrownMessage } from '../util/guards.js';
@@ -25,7 +19,8 @@ import {
   fetchOpenSearchAlertingFindings,
   type DetectionFetchResult,
 } from './opensearchDetections.js';
-import { findingSeverityRank, shouldSkipHeuristicPoll } from './pollUtils.js';
+import { selectNovelInsightPostBatch, shouldSkipHeuristicPoll } from './pollUtils.js';
+import { enrichInsightsEgressBatch } from './enrichEgressEvidence.js';
 
 function detectionFetchFailure(e: unknown): DetectionFetchResult {
   return { ok: false, findings: [], warning: thrownMessage(e) };
@@ -113,14 +108,12 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
         const currentMinutes = 15;
         const baselineMinutes = 24 * 60;
         const portscanMinutes = 5;
-        const backgroundMinutes = 7 * 24 * 60;
 
         const currentWindow = windowRelative({ to: now, minutesBack: currentMinutes });
         const baselineWindow = windowRelative({ to: now, minutesBack: baselineMinutes });
         const portscanWindow = windowRelative({ to: now, minutesBack: portscanMinutes });
-        const backgroundWindow = windowRelative({ to: now, minutesBack: backgroundMinutes });
 
-        const [currentEgress, baselineEgress, portscanRows, rareDestRows] = await Promise.all([
+        const [currentEgress, baselineEgress, portscanRows] = await Promise.all([
           queryTopEgressBySource({
             client,
             index: config.search.indexPattern,
@@ -142,14 +135,6 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
             window: portscanWindow,
             size: 50,
           }),
-          queryRareDestinationsSignificantTerms({
-            client,
-            index: config.search.indexPattern,
-            fields,
-            window: currentWindow,
-            backgroundWindow,
-            size: 10,
-          }).catch(() => []),
         ]);
 
         const findings: Finding[] = [
@@ -166,11 +151,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
             rows: portscanRows,
             thresholds: config.thresholds,
           }),
-          ...detectRareDestinations({
-            window: currentWindow,
-            rows: rareDestRows,
-          }),
-        ].sort((a, b) => findingSeverityRank(b.severity) - findingSeverityRank(a.severity));
+        ];
 
         const novel = findings.filter((f) => !dedupe.has(f.id));
         if (novel.length === 0) {
@@ -178,7 +159,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
           return;
         }
 
-        await postFindings(novel);
+        await postFindings(findings);
       } catch (e) {
         log.error({ ...logErr(e) }, 'poll failed');
       } finally {
@@ -189,26 +170,40 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   }
 
   async function postFindings(findings: Finding[]): Promise<void> {
-    const novel = findings.filter((f) => !dedupe.has(f.id));
-    if (novel.length === 0) return;
+    const toPost = selectNovelInsightPostBatch(findings, dedupe);
+    if (toPost.length === 0) return;
 
-    const text = await llm
-      .summarizeFindings({ channelStyle: 'slack', findings: novel })
-      .then((r) => r.text)
-      .catch((e) => {
-        log.warn({ ...logErr(e), findingCount: novel.length }, 'LLM summarization failed, using fallback');
-        return formatFindingsFallback(novel);
-      });
+    const toSummarize = await enrichInsightsEgressBatch({
+      client,
+      index: config.search.indexPattern,
+      fields,
+      findings: toPost,
+      log,
+    });
+
+    const summary = await llm.summarizeFindings({ channelStyle: 'slack', findings: toSummarize }).catch((e) => {
+      log.warn({ ...logErr(e), findingCount: toPost.length }, 'LLM summarization failed; skipping proactive post');
+      return null;
+    });
+
+    if (summary === null) return;
+
+    if (!summary.post || !summary.text.trim()) {
+      log.debug({ findingCount: toPost.length, post: summary.post }, 'LLM declined proactive insight post');
+      return;
+    }
+
+    const text = summary.text.trim();
 
     try {
       await opts.insightSink.postInsight(text);
     } catch {
       // Notifier already logged the cause; record outcome only and skip dedupe so the next poll retries.
-      log.warn({ findingCount: novel.length, output: config.output }, 'post findings failed');
+      log.warn({ findingCount: toPost.length, output: config.output }, 'post findings failed');
       return;
     }
-    for (const f of novel) dedupe.mark(f.id);
-    log.info({ findingCount: novel.length, output: config.output }, 'posted findings');
+    toPost.forEach((f) => dedupe.mark(f.id));
+    log.info({ findingCount: toPost.length, output: config.output }, 'posted findings');
   }
 
   await pollOnce();
@@ -228,4 +223,3 @@ function rateLimitedWarn(log: Logger, map: Map<string, number>, key: string, msg
   log.warn({ degradedKey: key, degradedMsg: msg }, 'insights degraded');
   map.set(key, now + 10 * 60_000);
 }
-

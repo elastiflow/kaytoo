@@ -10,7 +10,6 @@ const eng = vi.hoisted(() => ({
   fetchAd: vi.fn(),
   queryTopEgressBySource: vi.fn(),
   queryPortscanCandidates: vi.fn(),
-  queryRareDestinationsSignificantTerms: vi.fn(),
   summarizeFindings: vi.fn(),
 }));
 
@@ -54,7 +53,6 @@ function resetEngMocks(opts?: { alerting?: MockDetectionFetch; ad?: MockDetectio
   eng.fetchAd.mockReset();
   eng.queryTopEgressBySource.mockReset();
   eng.queryPortscanCandidates.mockReset();
-  eng.queryRareDestinationsSignificantTerms.mockReset();
   eng.summarizeFindings.mockReset();
 
   eng.fetchAlerting.mockResolvedValue(
@@ -63,8 +61,7 @@ function resetEngMocks(opts?: { alerting?: MockDetectionFetch; ad?: MockDetectio
   eng.fetchAd.mockResolvedValue(opts?.ad ?? { ok: true, findings: [], healthyEmpty: true });
   eng.queryTopEgressBySource.mockResolvedValue([]);
   eng.queryPortscanCandidates.mockResolvedValue([]);
-  eng.queryRareDestinationsSignificantTerms.mockResolvedValue([]);
-  eng.summarizeFindings.mockResolvedValue({ text: 'summary text' });
+  eng.summarizeFindings.mockResolvedValue({ post: true, text: 'summary text' });
 }
 
 vi.mock('../src/insights/opensearchDetections.js', () => ({
@@ -75,12 +72,20 @@ vi.mock('../src/insights/opensearchDetections.js', () => ({
 vi.mock('../src/opensearch/queries/index.js', () => ({
   queryTopEgressBySource: (...a: unknown[]) => eng.queryTopEgressBySource(...a) as Promise<unknown>,
   queryPortscanCandidates: (...a: unknown[]) => eng.queryPortscanCandidates(...a) as Promise<unknown>,
-  queryRareDestinationsSignificantTerms: (...a: unknown[]) =>
-    eng.queryRareDestinationsSignificantTerms(...a) as Promise<unknown>,
 }));
 
 vi.mock('../src/search/client.js', () => ({
-  createSearchClient: vi.fn(() => ({ search: vi.fn(), fieldCaps: vi.fn() })),
+  createSearchClient: vi.fn(() => ({
+    search: vi.fn().mockResolvedValue({
+      body: {
+        aggregations: {
+          by_dst: { buckets: [] },
+          by_dport: { buckets: [] },
+        },
+      },
+    }),
+    fieldCaps: vi.fn(),
+  })),
 }));
 
 vi.mock('../src/opensearch/waitForFieldMapping.js', () => ({
@@ -175,7 +180,7 @@ describe('startInsightEngine', () => {
     expect(insightSink.postInsight).toHaveBeenCalledWith('summary text');
   });
 
-  it('falls back to formatFindingsFallback when summarization fails', async () => {
+  it('skips proactive post when summarization fails (fail-closed)', async () => {
     eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [sampleFinding], healthyEmpty: false });
     eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: true });
     eng.summarizeFindings.mockRejectedValue(new Error('llm unavailable'));
@@ -184,13 +189,10 @@ describe('startInsightEngine', () => {
     const insightSink = mockInsightSink();
     await startInsightEngine({ config: consoleSearchConfig(), insightSink });
 
-    const text = insightSink.postInsight.mock.calls[0]![0];
-    expect(text).toMatch(/Kaytoo|insight/i);
+    expect(insightSink.postInsight).not.toHaveBeenCalled();
   });
 
-  it('runs heuristics for Elasticsearch backend and swallows rare-dest query failures', async () => {
-    eng.queryRareDestinationsSignificantTerms.mockRejectedValue(new Error('sigterms failed'));
-
+  it('runs heuristics for Elasticsearch backend without rare-destination query', async () => {
     const { startInsightEngine } = await import('../src/insights/engine.js');
     const insightSink = mockInsightSink();
     await startInsightEngine({ config: elasticConsoleConfig(), insightSink });
@@ -238,11 +240,10 @@ describe('startInsightEngine', () => {
       const spanMin =
         (new Date(opts.window.to).getTime() - new Date(opts.window.from).getTime()) / 60_000;
       if (spanMin > 60) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 1_000 }]);
-      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 80_000_000 }]);
+      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 120_000_000 }]);
       return Promise.resolve([]);
     });
     eng.queryPortscanCandidates.mockResolvedValue([]);
-    eng.queryRareDestinationsSignificantTerms.mockResolvedValue([]);
 
     const { startInsightEngine } = await import('../src/insights/engine.js');
     const insightSink = mockInsightSink();
@@ -296,7 +297,6 @@ describe('startInsightEngine', () => {
     eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
     eng.queryTopEgressBySource.mockResolvedValue([]);
     eng.queryPortscanCandidates.mockResolvedValue([]);
-    eng.queryRareDestinationsSignificantTerms.mockResolvedValue([]);
     const { startInsightEngine } = await import('../src/insights/engine.js');
     const insightSink = mockInsightSink();
     await startInsightEngine({ config: consoleSearchConfig(), insightSink });
@@ -310,13 +310,12 @@ describe('startInsightEngine', () => {
       const spanMin =
         (new Date(opts.window.to).getTime() - new Date(opts.window.from).getTime()) / 60_000;
       if (spanMin > 60) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 1_000 }]);
-      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 80_000_000 }]);
+      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 120_000_000 }]);
       return Promise.resolve([]);
     });
     eng.queryPortscanCandidates.mockResolvedValue([
       { srcIp: '10.0.0.8', distinctDstPorts: 160, packets: 300, bytes: 1 },
     ]);
-    eng.queryRareDestinationsSignificantTerms.mockResolvedValue([]);
 
     const { startInsightEngine } = await import('../src/insights/engine.js');
     const insightSink = mockInsightSink();
@@ -327,6 +326,58 @@ describe('startInsightEngine', () => {
     const sevRanks = summarized.findings.map((f) => findingSeverityRank(f.severity));
     const sortedRanks = [...sevRanks].sort((a, b) => b - a);
     expect(sevRanks).toEqual(sortedRanks);
+  });
+
+  it('skips proactive post when LLM sets post to false', async () => {
+    eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [sampleFinding], healthyEmpty: false });
+    eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: true });
+    eng.summarizeFindings.mockResolvedValue({ post: false, text: '' });
+
+    const { startInsightEngine } = await import('../src/insights/engine.js');
+    const insightSink = mockInsightSink();
+    await startInsightEngine({ config: consoleSearchConfig(), insightSink });
+    expect(insightSink.postInsight).not.toHaveBeenCalled();
+  });
+
+  it('does not call LLM when heuristic findings are only low severity', async () => {
+    eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
+    eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
+    eng.queryTopEgressBySource.mockImplementation((opts: { window: { from: string; to: string } }) => {
+      const spanMin =
+        (new Date(opts.window.to).getTime() - new Date(opts.window.from).getTime()) / 60_000;
+      if (spanMin > 60) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 1_000 }]);
+      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 80_000_000 }]);
+      return Promise.resolve([]);
+    });
+    eng.queryPortscanCandidates.mockResolvedValue([]);
+
+    const { startInsightEngine } = await import('../src/insights/engine.js');
+    const insightSink = mockInsightSink();
+    await startInsightEngine({ config: consoleSearchConfig(), insightSink });
+    expect(eng.summarizeFindings).not.toHaveBeenCalled();
+    expect(insightSink.postInsight).not.toHaveBeenCalled();
+  });
+
+  it('caps backend findings passed to the LLM at three', async () => {
+    const many: Finding[] = Array.from({ length: 5 }, (_, i) => ({
+      id: `os-alert:r${i}`,
+      kind: 'opensearch_alert' as const,
+      severity: 'medium' as const,
+      title: `Alert ${i}`,
+      summary: 'S',
+      evidence: {},
+      window: { from: 'a', to: 'b' },
+    }));
+    eng.fetchAlerting.mockResolvedValue({ ok: true, findings: many, healthyEmpty: false });
+    eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: true });
+
+    const { startInsightEngine } = await import('../src/insights/engine.js');
+    const insightSink = mockInsightSink();
+    await startInsightEngine({ config: consoleSearchConfig(), insightSink });
+
+    const summarized = eng.summarizeFindings.mock.calls[0]![0] as { findings: Finding[] };
+    expect(summarized.findings).toHaveLength(3);
+    expect(insightSink.postInsight).toHaveBeenCalled();
   });
 
   it('stringifies non-Error alerting fetch rejection', async () => {

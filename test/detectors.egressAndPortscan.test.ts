@@ -110,6 +110,36 @@ describe('egress and portscan detectors', () => {
 
     expect(findings.some((f) => f.kind === 'egress_anomaly' && f.evidence.srcIp === '192.168.1.205')).toBe(true);
     expect(findings.some((f) => f.evidence.srcIp === '192.168.1.10')).toBe(false);
+    const eg = findings.find((f) => f.kind === 'egress_anomaly' && f.evidence.srcIp === '192.168.1.205');
+    expect(eg?.evidence.contributingSrcIps).toEqual(['192.168.1.205']);
+  });
+
+  it('merges IPv6 global sources in the same /64 into one egress finding', () => {
+    const findings = detectEgressAnomalies({
+      window: { from: '2026-01-01T00:00:00.000Z', to: '2026-01-01T00:15:00.000Z' },
+      current: [
+        { srcIp: '2001:db8::1', bytes: 60_000_000 },
+        { srcIp: '2001:db8::2', bytes: 70_000_000 },
+      ],
+      baseline: [
+        { srcIp: '2001:db8::1', bytes: 500 },
+        { srcIp: '2001:db8::2', bytes: 500 },
+      ],
+      thresholds: {
+        egressMultiplier: 3,
+        egressMinBytes: 50_000_000,
+        portscanDistinctDstPorts: 50,
+        portscanMinPackets: 200,
+      },
+      baselineMinutes: 24 * 60,
+      currentMinutes: 15,
+    });
+
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toBe('egress:v6-64:2001:0db8:0000:0000');
+    expect(findings[0]!.evidence.bytes).toBe(130_000_000);
+    expect(findings[0]!.evidence.contributingSrcIps).toEqual(['2001:db8::1', '2001:db8::2']);
+    expect(findings[0]!.title).toMatch(/IPv6 \/64/);
   });
 
   it('flags likely port scans based on distinct destination ports and packets', () => {

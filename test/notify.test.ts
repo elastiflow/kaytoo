@@ -31,8 +31,8 @@ describe('notify', () => {
 
     const text = formatFindingsFallback(findings);
     expect(text).toContain('Kaytoo: 7 insight(s)');
-    expect(text.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(6); // 5 findings + "...and N more"
-    expect(text).toContain('...and 2 more');
+    expect(text.split('\n').filter((l) => l.startsWith('- '))).toHaveLength(4); // 3 findings + "...and N more"
+    expect(text).toContain('...and 4 more');
   });
 
   it('createSlackNotifier posts messages via WebClient.chat.postMessage', async () => {

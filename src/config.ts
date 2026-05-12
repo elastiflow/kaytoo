@@ -86,7 +86,7 @@ const configSchema = z
     llm: z.object({
       baseUrl: z.string().url('LLM_BASE_URL must be a valid URL'),
       apiKey: z.string().min(1, 'LLM_API_KEY is required'),
-      model: z.string().min(1).default('gpt-5.3-codex'),
+      model: z.string().min(1).default('gpt-5.4-codex'),
     }),
     behavior: z.object({
       pollIntervalSeconds: z.string().default('300').pipe(intFromString),
@@ -273,7 +273,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, opts?: GetConfig
     llm: {
       baseUrl: env.LLM_BASE_URL,
       apiKey: env.LLM_API_KEY,
-      model: env.LLM_MODEL ?? 'gpt-5.4-codex',
+      model: env.LLM_MODEL,
     },
     behavior: {},
     thresholds: {},

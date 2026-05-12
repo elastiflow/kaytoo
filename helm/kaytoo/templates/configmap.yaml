@@ -20,7 +20,9 @@ data:
   {{- end }}
 
   LLM_BASE_URL: {{ .Values.config.llm.baseUrl | quote }}
+  {{- if .Values.config.llm.model }}
   LLM_MODEL: {{ .Values.config.llm.model | quote }}
+  {{- end }}
 
   LOG_LEVEL: {{ .Values.logging.level | quote }}
 

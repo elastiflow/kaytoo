@@ -10,6 +10,6 @@ export type LlmClient = {
     /** Maps to OpenAI-compatible `max_tokens` when set. */
     maxTokens?: number;
   }): Promise<{ content: string }>;
-  summarizeFindings(input: { channelStyle: 'slack'; findings: unknown[] }): Promise<{ text: string }>;
+  summarizeFindings(input: { channelStyle: 'slack'; findings: unknown[] }): Promise<{ post: boolean; text: string }>;
 };
 

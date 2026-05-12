@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Finding } from '../src/detectors/types.js';
-import { findingSeverityRank, shouldSkipHeuristicPoll } from '../src/insights/pollUtils.js';
+import {
+  findingSeverityRank,
+  selectNovelInsightPostBatch,
+  shouldSkipHeuristicPoll,
+} from '../src/insights/pollUtils.js';
 
 describe('shouldSkipHeuristicPoll', () => {
   const r = (healthyEmpty: boolean) =>
@@ -42,6 +46,22 @@ describe('shouldSkipHeuristicPoll', () => {
         { ok: true, findings: [] },
       ),
     ).toBe(false);
+  });
+});
+
+describe('selectNovelInsightPostBatch', () => {
+  it('keeps only novel medium/high findings capped at three', () => {
+    const dedupe = { has: vi.fn((id: string) => id === 'seen') };
+    const findings: Finding[] = [
+      { id: 'a', kind: 'port_scan', severity: 'high', title: 't', summary: 's', evidence: {}, window: { from: 'a', to: 'b' } },
+      { id: 'b', kind: 'port_scan', severity: 'medium', title: 't', summary: 's', evidence: {}, window: { from: 'a', to: 'b' } },
+      { id: 'seen', kind: 'port_scan', severity: 'high', title: 't', summary: 's', evidence: {}, window: { from: 'a', to: 'b' } },
+      { id: 'c', kind: 'port_scan', severity: 'low', title: 't', summary: 's', evidence: {}, window: { from: 'a', to: 'b' } },
+      { id: 'd', kind: 'port_scan', severity: 'medium', title: 't', summary: 's', evidence: {}, window: { from: 'a', to: 'b' } },
+      { id: 'e', kind: 'port_scan', severity: 'medium', title: 't', summary: 's', evidence: {}, window: { from: 'a', to: 'b' } },
+    ];
+    const batch = selectNovelInsightPostBatch(findings, dedupe);
+    expect(batch.map((f) => f.id)).toEqual(['a', 'b', 'd']);
   });
 });
 
