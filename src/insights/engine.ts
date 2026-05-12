@@ -16,7 +16,7 @@ import { detectRareDestinations } from '../detectors/rareDest.js';
 import type { Finding } from '../detectors/types.js';
 import { createOpenAiCompatClient } from '../llm/openaiCompat.js';
 import { formatFindingsFallback } from '../notify/format.js';
-import type { SlackNotifier as InsightPostSink } from '../notify/slack.js';
+import type { InsightSink } from '../notify/insightSink.js';
 import { DedupeStore } from '../state/dedupe.js';
 import { thrownMessage } from '../util/guards.js';
 import { windowRelative } from '../util/time.js';
@@ -31,7 +31,7 @@ function detectionFetchFailure(e: unknown): DetectionFetchResult {
   return { ok: false, findings: [], warning: thrownMessage(e) };
 }
 
-export async function startInsightEngine(opts: { config: KaytooConfig; insightSink: InsightPostSink }): Promise<{
+export async function startInsightEngine(opts: { config: KaytooConfig; insightSink: InsightSink }): Promise<{
   stop: () => void;
 }> {
   const { config } = opts;
@@ -200,9 +200,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
         return formatFindingsFallback(novel);
       });
 
-    const channel =
-      config.output === 'console' ? 'console' : (config.slack?.channelId ?? '');
-    await opts.insightSink.postMessage({ channel, text });
+    await opts.insightSink.postInsight(text);
     for (const f of novel) dedupe.mark(f.id);
     log.info({ findingCount: novel.length, output: config.output }, 'posted findings');
   }

@@ -28,7 +28,6 @@ describe('getConfig', () => {
     expect(cfg.logging.includeDebugBodies).toBe(false);
     expect(cfg.logging.redactPaths).toEqual([]);
     expect(cfg.logging.matrixSdkLevel).toBe('WARN');
-    expect(cfg.logging.nodeEnv).toBe('development');
     expect(cfg.conversation.ttlSeconds).toBe(604_800);
     expect(cfg.conversation.maxTurns).toBe(20);
     expect(cfg.conversation.summarizeAfterTurns).toBe(12);
@@ -63,19 +62,16 @@ describe('getConfig', () => {
     expect(cfg.logging.includeDebugBodies).toBe(false);
     expect(cfg.logging.redactPaths).toEqual([]);
     expect(cfg.logging.matrixSdkLevel).toBe('WARN');
-    expect(cfg.logging.nodeEnv).toBe('development');
   });
 
-  it('ignores NODE_ENV and threshold env vars', () => {
+  it('ignores undocumented threshold env vars', () => {
     const cfg = getConfig({
       ...baseEnv,
-      NODE_ENV: 'production',
       EGRESS_MULTIPLIER: '99',
       EGRESS_MIN_BYTES: '999',
       PORTSCAN_PORTS_THRESHOLD: '999',
       PORTSCAN_MIN_PACKETS: '999',
     });
-    expect(cfg.logging.nodeEnv).toBe('development');
     expect(cfg.thresholds.egressMultiplier).toBe(3);
     expect(cfg.thresholds.egressMinBytes).toBe(50_000_000);
     expect(cfg.thresholds.portscanDistinctDstPorts).toBe(50);
@@ -86,7 +82,7 @@ describe('getConfig', () => {
     expect(() => getConfig({})).toThrowError(/Invalid configuration:/);
   });
 
-  it('throws when slack creds are missing in chat output mode', () => {
+  it('throws when chat output is forced without any chat adapter configured', () => {
     expect(() =>
       getConfig({
         OPENSEARCH_URL: 'https://opensearch.example.com',
@@ -95,7 +91,20 @@ describe('getConfig', () => {
         LLM_BASE_URL: 'https://llm.example.com',
         LLM_API_KEY: 'key',
       }, { outputOverride: 'chat' }),
-    ).toThrowError(/slack\.botToken/);
+    ).toThrowError(/Chat mode requires Slack, Matrix, or Mattermost/);
+  });
+
+  it('requires all Slack tokens when any Slack env is set in chat output mode', () => {
+    expect(() =>
+      getConfig({
+        SLACK_BOT_TOKEN: 'xoxb-test',
+        OPENSEARCH_URL: 'https://opensearch.example.com',
+        OPENSEARCH_USERNAME: 'user',
+        OPENSEARCH_PASSWORD: 'pass',
+        LLM_BASE_URL: 'https://llm.example.com',
+        LLM_API_KEY: 'key',
+      }),
+    ).toThrowError(/slack\.appToken/);
   });
 
   it('uses console output without Slack env', () => {
@@ -127,7 +136,7 @@ describe('getConfig', () => {
     expect(cfg.slack).toBeUndefined();
   });
 
-  it('lets outputOverride force chat and require Slack creds', () => {
+  it('lets outputOverride force chat and require at least one adapter', () => {
     expect(() =>
       getConfig(
         {
@@ -139,11 +148,11 @@ describe('getConfig', () => {
         },
         { outputOverride: 'chat' },
       ),
-    ).toThrowError(/slack\.botToken/);
+    ).toThrowError(/Chat mode requires Slack, Matrix, or Mattermost/);
   });
 
   it('computes output from configured adapters', () => {
-    // output is computed (Slack configured => chat, otherwise console)
+    // output is computed (any chat adapter env => chat, otherwise console)
     const cfg = getConfig({
       OPENSEARCH_URL: baseEnv.OPENSEARCH_URL,
       OPENSEARCH_USERNAME: baseEnv.OPENSEARCH_USERNAME,
@@ -158,6 +167,70 @@ describe('getConfig', () => {
     const cfg = getConfig(baseEnv, { outputOverride: 'chat' });
     expect(cfg.output).toBe('chat');
     expect(cfg.slack?.channelId).toBe('C123');
+  });
+
+  it('enables chat mode for Matrix-only configurations without Slack env', () => {
+    const cfg = getConfig({
+      MATRIX_HOMESERVER: 'https://matrix.example.com',
+      MATRIX_ACCESS_TOKEN: 'mat-token',
+      MATRIX_DEFAULT_ROOM_ID: '!room:example.com',
+      OPENSEARCH_URL: 'https://opensearch.example.com',
+      OPENSEARCH_USERNAME: 'user',
+      OPENSEARCH_PASSWORD: 'pass',
+      LLM_BASE_URL: 'https://llm.example.com',
+      LLM_API_KEY: 'key',
+    });
+
+    expect(cfg.output).toBe('chat');
+    expect(cfg.slack).toBeUndefined();
+    expect(cfg.matrix?.homeserver).toBe('https://matrix.example.com');
+    expect(cfg.matrix?.accessToken).toBe('mat-token');
+    expect(cfg.matrix?.defaultRoomId).toBe('!room:example.com');
+  });
+
+  it('requires MATRIX_DEFAULT_ROOM_ID when Matrix env is set', () => {
+    expect(() =>
+      getConfig({
+        MATRIX_HOMESERVER: 'https://matrix.example.com',
+        MATRIX_ACCESS_TOKEN: 'mat-token',
+        OPENSEARCH_URL: 'https://opensearch.example.com',
+        OPENSEARCH_USERNAME: 'user',
+        OPENSEARCH_PASSWORD: 'pass',
+        LLM_BASE_URL: 'https://llm.example.com',
+        LLM_API_KEY: 'key',
+      }),
+    ).toThrowError(/matrix\.defaultRoomId/);
+  });
+
+  it('enables chat mode for Mattermost-only configurations without Slack env', () => {
+    const cfg = getConfig({
+      MATTERMOST_URL: 'https://chat.example.com',
+      MATTERMOST_TOKEN: 'mm-token',
+      MATTERMOST_CHANNEL_ID: 'mm-channel',
+      OPENSEARCH_URL: 'https://opensearch.example.com',
+      OPENSEARCH_USERNAME: 'user',
+      OPENSEARCH_PASSWORD: 'pass',
+      LLM_BASE_URL: 'https://llm.example.com',
+      LLM_API_KEY: 'key',
+    });
+
+    expect(cfg.output).toBe('chat');
+    expect(cfg.slack).toBeUndefined();
+    expect(cfg.mattermost?.url).toBe('https://chat.example.com');
+    expect(cfg.mattermost?.channelId).toBe('mm-channel');
+  });
+
+  it('allows Matrix + Slack to be configured simultaneously', () => {
+    const cfg = getConfig({
+      ...baseEnv,
+      MATRIX_HOMESERVER: 'https://matrix.example.com',
+      MATRIX_ACCESS_TOKEN: 'mat-token',
+      MATRIX_DEFAULT_ROOM_ID: '!room:example.com',
+    });
+
+    expect(cfg.output).toBe('chat');
+    expect(cfg.slack?.botToken).toBe('xoxb-test');
+    expect(cfg.matrix?.defaultRoomId).toBe('!room:example.com');
   });
 });
 

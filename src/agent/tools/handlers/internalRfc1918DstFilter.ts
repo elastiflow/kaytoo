@@ -19,7 +19,7 @@ export function privateIpv4DstBool(dstIpField: string, opts?: { includeCgnat?: b
   };
 }
 
-/** Internal / private destination IPs including CGNAT (for “internal dst” filters in aggregations). */
+/** Internal / private destination IPs including CGNAT (for "internal dst" filters in aggregations). */
 export function internalRfc1918DstIpFilter(dstIpField: string): Record<string, unknown> {
   return privateIpv4DstBool(dstIpField, { includeCgnat: true });
 }

@@ -1,11 +1,8 @@
 replicaCount: 1
 
-# Passed to process env as KAYTOO_OUTPUT (slack | console). Console skips Slack / chat adapters.
-kaytooOutput: slack
-
 image:
-  repository: kaytoo
-  tag: "dev"
+  repository: ghcr.io/elastiflow/kaytoo
+  tag: ""
   pullPolicy: IfNotPresent
 
 serviceAccount:
@@ -33,50 +30,37 @@ resources:
 config:
   slack:
     channelId: ""
+  matrix:
+    homeserver: ""
+    defaultRoomId: ""
+  mattermost:
+    url: ""
+    channelId: ""
+    botUserId: ""
   opensearch:
     url: ""
     tlsInsecure: "false"
-    # Default matches ElastiFlow CODEX-style indices; use elastiflow-flow-* (or your alias) if your cluster uses a different pipeline/mapping. Must align with document fields Kaytoo resolves (see README).
+    # Default matches ElastiFlow CODEX-style indices.
+    # Use elastiflow-flow-* (or your alias) if your cluster uses a different pipeline/mapping.
+    # This must align with document fields that Kaytoo resolves (see README).
     indexPattern: "elastiflow-flow-codex-*"
     mcpUrl: ""
   llm:
     baseUrl: ""
     model: "gpt-5.3-codex"
-  behavior:
-    pollIntervalSeconds: "300"
-    dedupeTtlSeconds: "3600"
-  thresholds:
-    egressMultiplier: "3"
-    egressMinBytes: "50000000"
-    portscanDistinctDstPorts: "50"
-    portscanMinPackets: "200"
 
 secrets:
   existingSecret: ""
   slackBotToken: ""
   slackAppToken: ""
+  matrixAccessToken: ""
+  mattermostToken: ""
   opensearchUsername: ""
   opensearchPassword: ""
   llmApiKey: ""
 
-# Optional adapters (auto-enabled if configured)
-matrix:
-  homeserver: ""
-  accessToken: ""
-  defaultRoomId: ""
-
-mattermost:
-  url: ""
-  token: ""
-  channelId: ""
-  botUserId: ""
-
 logging:
   level: "info"
-  includeDebugBodies: "false"
-  redact: ""
-  matrixSdkLevel: "WARN"
-  nodeEnv: "" # non-empty → ConfigMap `NODE_ENV`; empty → keep image default
 
 networkPolicy:
   enabled: false

@@ -1,5 +1,5 @@
 > ⚠️ **Notice**  
-> This repo is a small, experimental project built for fun and learning. It’s shared publicly **as-is** with no promised support, roadmap, or guarantees.
+> This repo is a small, experimental project built for fun and learning. It's shared publicly **as-is** with no promised support, roadmap, or guarantees.
 
 <div align="center">
   <img src="assets/kaytoo.png" alt="Kaytoo logo" width="180" />
@@ -98,13 +98,11 @@ Kaytoo is configured via environment variables. For a minimal example, see `.env
 
 #### Environment variables
 
-**Slack** (required for chat mode. See [Slack setup (Socket Mode)](#slack-setup-socket-mode) below)
+**Chat adapters** - configure at least one to run in chat mode. Kaytoo posts scheduled insights to every configured platform and answers chat replies on the same platform a message arrives from. See the per-platform setup and full variable tables below:
 
-| Variable | Required | Default | Notes |
-| --- | --- | --- | --- |
-| `SLACK_BOT_TOKEN` | yes | - | Bot token (`xoxb-...`). |
-| `SLACK_APP_TOKEN` | yes | - | App-level token for Socket Mode (`xapp-...`). |
-| `SLACK_CHANNEL_ID` | yes | - | Channel for scheduled insight posts. |
+- [Slack](#slack): `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_CHANNEL_ID`
+- [Matrix](#matrix): `MATRIX_HOMESERVER`, `MATRIX_ACCESS_TOKEN`, `MATRIX_DEFAULT_ROOM_ID`
+- [Mattermost](#mattermost): `MATTERMOST_URL`, `MATTERMOST_TOKEN`, `MATTERMOST_CHANNEL_ID`
 
 **Search backend** (Choose either OpenSearch or Elasticsearch. Do not set both)
 
@@ -205,7 +203,7 @@ Uses [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk) with an in-m
 | --- | --- | --- | --- |
 | `MATRIX_HOMESERVER` | yes | - | Homeserver base URL. |
 | `MATRIX_ACCESS_TOKEN` | yes | - | Access token for the bot user. |
-| `MATRIX_DEFAULT_ROOM_ID` | no | - | If set, Kaytoo attempts to join on startup. |
+| `MATRIX_DEFAULT_ROOM_ID` | yes | - | Room for scheduled insight posts. Kaytoo also attempts to join it on startup. |
 
 ##### Setup
 
@@ -224,8 +222,8 @@ Uses [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk) with an in-m
    - Invite the bot user into each room where Kaytoo should respond.
    - Kaytoo auto-joins rooms it is invited to.
 
-5. **(Optional) default room**:
-   - Set `MATRIX_DEFAULT_ROOM_ID` if you want Kaytoo to attempt to join a specific room on startup.
+5. **Default room**:
+   - Set `MATRIX_DEFAULT_ROOM_ID` to the room that should receive scheduled insight posts. Kaytoo also attempts to join this room on startup.
 
 6. **Run Kaytoo** with OpenSearch/Elasticsearch + LLM configured (same as Slack).
 
@@ -235,7 +233,7 @@ Notes:
 
 #### Mattermost
 
-Inbound messages use the Mattermost WebSocket API (`/api/v4/websocket`); outbound replies use REST.
+Inbound messages use the Mattermost WebSocket API (`/api/v4/websocket`); outbound replies use REST. `MATTERMOST_URL`, `MATTERMOST_TOKEN`, and `MATTERMOST_CHANNEL_ID` enable chat mode.
 
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
@@ -322,7 +320,16 @@ helm upgrade --install kaytoo ./helm/kaytoo \
 
 #### Releases
 
-Pushes to `main` run [`elastiflow/gha-reusable` `prepare-release`](https://github.com/elastiflow/gha-reusable), which may open a pull request that bumps `helm/kaytoo/Chart.yaml`, `package.json`, and prepends `CHANGELOG.md`. **Squash-merge that PR** so the resulting commit subject is exactly `[release vX.Y.Z] (#NNN)` (GitHub’s default squash title matches the PR title). Merging with that message triggers the GitHub release, container push to `ghcr.io/<owner>/<repo>`, and a Helm chart GitHub release plus `cr index` publish to the `gh-pages` branch when GitHub Pages is enabled for that branch.
+Releases are driven by [`elastiflow/gha-reusable`](https://github.com/elastiflow/gha-reusable) `prepare-release`. The flow:
+
+1. **Push to `main`** runs `prepare-release`, which may open a PR that:
+   - bumps `helm/kaytoo/Chart.yaml` and `package.json`
+   - prepends a new entry to `CHANGELOG.md`
+2. **Squash-merge that PR.** Keep GitHub's default squash title so the commit subject is exactly `[release vX.Y.Z] (#NNN)`.
+3. **The release commit** then triggers:
+   - a GitHub release for `vX.Y.Z`
+   - a container push to `ghcr.io/<owner>/<repo>`
+   - a Helm chart GitHub release plus `cr index` publish to the `gh-pages` branch
 
 #### Useful scripts
 

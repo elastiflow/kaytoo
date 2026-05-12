@@ -112,7 +112,7 @@ describe('notify', () => {
       },
     } as Logger;
     const sink = createConsoleInsightSink(log);
-    await sink.postMessage({ channel: 'console', text: 'hello findings' });
+    await sink.postInsight('hello findings');
     expect(infos.events).toHaveLength(1);
     expect(infos.events[0]).toEqual({
       obj: { channel: 'console', insightText: 'hello findings' },

@@ -5,11 +5,13 @@ metadata:
   labels:
     {{- include "kaytoo.labels" . | nindent 4 }}
 data:
-  KAYTOO_OUTPUT: {{ .Values.kaytooOutput | quote }}
   {{- if .Values.httpChat.enabled }}
   KAYTOO_HTTP_CHAT_BIND: {{ printf "0.0.0.0:%d" (.Values.httpChat.port | int) | quote }}
   {{- end }}
+  {{- if .Values.config.slack.channelId }}
   SLACK_CHANNEL_ID: {{ .Values.config.slack.channelId | quote }}
+  {{- end }}
+
   OPENSEARCH_URL: {{ .Values.config.opensearch.url | quote }}
   OPENSEARCH_TLS_INSECURE: {{ .Values.config.opensearch.tlsInsecure | quote }}
   OPENSEARCH_INDEX_PATTERN: {{ .Values.config.opensearch.indexPattern | quote }}
@@ -20,36 +22,22 @@ data:
   LLM_BASE_URL: {{ .Values.config.llm.baseUrl | quote }}
   LLM_MODEL: {{ .Values.config.llm.model | quote }}
 
-  POLL_INTERVAL_SECONDS: {{ .Values.config.behavior.pollIntervalSeconds | quote }}
-  DEDUPE_TTL_SECONDS: {{ .Values.config.behavior.dedupeTtlSeconds | quote }}
-
-  EGRESS_MULTIPLIER: {{ .Values.config.thresholds.egressMultiplier | quote }}
-  EGRESS_MIN_BYTES: {{ .Values.config.thresholds.egressMinBytes | quote }}
-  PORTSCAN_PORTS_THRESHOLD: {{ .Values.config.thresholds.portscanDistinctDstPorts | quote }}
-  PORTSCAN_MIN_PACKETS: {{ .Values.config.thresholds.portscanMinPackets | quote }}
-
   LOG_LEVEL: {{ .Values.logging.level | quote }}
-  LOG_INCLUDE_DEBUG_BODIES: {{ .Values.logging.includeDebugBodies | quote }}
-  LOG_REDACT: {{ .Values.logging.redact | quote }}
-  MATRIX_SDK_LOG_LEVEL: {{ .Values.logging.matrixSdkLevel | quote }}
-  {{- if .Values.logging.nodeEnv }}
-  NODE_ENV: {{ .Values.logging.nodeEnv | quote }}
+
+  {{- if .Values.config.matrix.homeserver }}
+  MATRIX_HOMESERVER: {{ .Values.config.matrix.homeserver | quote }}
+  {{- end }}
+  {{- if .Values.config.matrix.defaultRoomId }}
+  MATRIX_DEFAULT_ROOM_ID: {{ .Values.config.matrix.defaultRoomId | quote }}
   {{- end }}
 
-  {{- if and .Values.matrix.homeserver .Values.matrix.accessToken }}
-  MATRIX_HOMESERVER: {{ .Values.matrix.homeserver | quote }}
-  MATRIX_ACCESS_TOKEN: {{ .Values.matrix.accessToken | quote }}
-  {{- if .Values.matrix.defaultRoomId }}
-  MATRIX_DEFAULT_ROOM_ID: {{ .Values.matrix.defaultRoomId | quote }}
+  {{- if .Values.config.mattermost.url }}
+  MATTERMOST_URL: {{ .Values.config.mattermost.url | quote }}
   {{- end }}
+  {{- if .Values.config.mattermost.channelId }}
+  MATTERMOST_CHANNEL_ID: {{ .Values.config.mattermost.channelId | quote }}
   {{- end }}
-
-  {{- if and .Values.mattermost.url .Values.mattermost.token .Values.mattermost.channelId }}
-  MATTERMOST_URL: {{ .Values.mattermost.url | quote }}
-  MATTERMOST_TOKEN: {{ .Values.mattermost.token | quote }}
-  MATTERMOST_CHANNEL_ID: {{ .Values.mattermost.channelId | quote }}
-  {{- if .Values.mattermost.botUserId }}
-  MATTERMOST_BOT_USER_ID: {{ .Values.mattermost.botUserId | quote }}
-  {{- end }}
+  {{- if .Values.config.mattermost.botUserId }}
+  MATTERMOST_BOT_USER_ID: {{ .Values.config.mattermost.botUserId | quote }}
   {{- end }}
 
