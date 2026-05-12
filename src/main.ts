@@ -3,7 +3,7 @@ import { getConfig } from './config.js';
 import { createConsoleInsightSink } from './notify/consoleInsightSink.js';
 import { createMultiInsightSink, createPlatformInsightSink, type InsightSink } from './notify/insightSink.js';
 import { startInsightEngine } from './insights/engine.js';
-import { getLogger, initLogging } from './logging/logger.js';
+import { getLogger, getServiceMetadata, initLogging } from './logging/logger.js';
 import { startE2eHttpChatServer } from './e2eHttpChatServer.js';
 import type { ChatRouter as ChatRouterT } from './chat/router.js';
 import type { Notifier } from './notify/notifier.js';
@@ -43,7 +43,12 @@ const { level, redactPaths } = config.logging;
 initLogging({ level, redactPaths });
 const log = getLogger({ component: 'main' });
 log.info(
-  { indexPattern: config.search.indexPattern, pollSeconds: config.behavior.pollIntervalSeconds, output: config.output },
+  {
+    ...getServiceMetadata(),
+    indexPattern: config.search.indexPattern,
+    pollSeconds: config.behavior.pollIntervalSeconds,
+    output: config.output,
+  },
   'kaytoo starting',
 );
 
@@ -168,7 +173,6 @@ if (config.output === 'console') {
       { platform: 'matrix', notifier: matrixNotifier, channelId: config.matrix?.defaultRoomId },
       { platform: 'mattermost', notifier: mattermostNotifier, channelId: config.mattermost?.channelId },
     ]),
-    log: getLogger({ component: 'insights.out' }),
   });
 
   const agent = await createAgentRuntime({ config });
