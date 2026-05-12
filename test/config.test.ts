@@ -232,5 +232,53 @@ describe('getConfig', () => {
     expect(cfg.slack?.botToken).toBe('xoxb-test');
     expect(cfg.matrix?.defaultRoomId).toBe('!room:example.com');
   });
+
+  it('accepts Matrix username + password as an alternative to access token', () => {
+    const cfg = getConfig({
+      MATRIX_HOMESERVER: 'https://matrix.example.com',
+      MATRIX_USER: 'kaytoo',
+      MATRIX_PASSWORD: 'pw',
+      MATRIX_DEFAULT_ROOM_ID: '!room:example.com',
+      OPENSEARCH_URL: 'https://opensearch.example.com',
+      OPENSEARCH_USERNAME: 'user',
+      OPENSEARCH_PASSWORD: 'pass',
+      LLM_BASE_URL: 'https://llm.example.com',
+      LLM_API_KEY: 'key',
+    });
+
+    expect(cfg.output).toBe('chat');
+    expect(cfg.matrix?.user).toBe('kaytoo');
+    expect(cfg.matrix?.password).toBe('pw');
+    expect(cfg.matrix?.accessToken).toBeUndefined();
+  });
+
+  it('rejects Matrix config with neither access token nor user+password', () => {
+    expect(() =>
+      getConfig({
+        MATRIX_HOMESERVER: 'https://matrix.example.com',
+        MATRIX_DEFAULT_ROOM_ID: '!room:example.com',
+        OPENSEARCH_URL: 'https://opensearch.example.com',
+        OPENSEARCH_USERNAME: 'user',
+        OPENSEARCH_PASSWORD: 'pass',
+        LLM_BASE_URL: 'https://llm.example.com',
+        LLM_API_KEY: 'key',
+      }),
+    ).toThrowError(/MATRIX_ACCESS_TOKEN or both MATRIX_USER and MATRIX_PASSWORD/);
+  });
+
+  it('rejects Matrix config with only a username and no password', () => {
+    expect(() =>
+      getConfig({
+        MATRIX_HOMESERVER: 'https://matrix.example.com',
+        MATRIX_USER: 'kaytoo',
+        MATRIX_DEFAULT_ROOM_ID: '!room:example.com',
+        OPENSEARCH_URL: 'https://opensearch.example.com',
+        OPENSEARCH_USERNAME: 'user',
+        OPENSEARCH_PASSWORD: 'pass',
+        LLM_BASE_URL: 'https://llm.example.com',
+        LLM_API_KEY: 'key',
+      }),
+    ).toThrowError(/MATRIX_ACCESS_TOKEN or both MATRIX_USER and MATRIX_PASSWORD/);
+  });
 });
 

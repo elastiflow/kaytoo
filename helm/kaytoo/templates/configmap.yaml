@@ -30,6 +30,9 @@ data:
   {{- if .Values.config.matrix.defaultRoomId }}
   MATRIX_DEFAULT_ROOM_ID: {{ .Values.config.matrix.defaultRoomId | quote }}
   {{- end }}
+  {{- if .Values.config.matrix.user }}
+  MATRIX_USER: {{ .Values.config.matrix.user | quote }}
+  {{- end }}
 
   {{- if .Values.config.mattermost.url }}
   MATTERMOST_URL: {{ .Values.config.mattermost.url | quote }}

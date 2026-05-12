@@ -13,6 +13,8 @@ import type { ChatEvent } from '../types.js';
 
 const log = getLogger({ component: 'chat.matrix' });
 
+export type MatrixAuth = { accessToken: string } | { user: string; password: string };
+
 async function whoamiUserId(baseUrl: string, accessToken: string): Promise<string | undefined> {
   const root = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const url = new URL('_matrix/client/v3/account/whoami', root);
@@ -22,24 +24,39 @@ async function whoamiUserId(baseUrl: string, accessToken: string): Promise<strin
   return typeof body.user_id === 'string' ? body.user_id : undefined;
 }
 
+function loginIdentifier(user: string): { type: 'm.id.user'; user: string } {
+  const localpart = user.startsWith('@') ? user.replace(/^@/, '').split(':')[0]! : user;
+  return { type: 'm.id.user', user: localpart };
+}
+
 export async function startMatrixAdapter(opts: {
   homeserverUrl: string;
-  accessToken: string;
+  auth: MatrixAuth;
   matrixSdkLevel: MatrixSdkLevel;
   defaultRoomId?: string;
   onEvent: (evt: ChatEvent) => Promise<void>;
 }): Promise<{ stop: () => Promise<void>; client: MatrixClient }> {
   const logger = createMatrixJsSdkLogger(opts.matrixSdkLevel);
-  const userId = await whoamiUserId(opts.homeserverUrl, opts.accessToken);
+  const userId =
+    'accessToken' in opts.auth ? await whoamiUserId(opts.homeserverUrl, opts.auth.accessToken) : undefined;
 
   const client = createClient({
     baseUrl: opts.homeserverUrl,
-    accessToken: opts.accessToken,
+    ...('accessToken' in opts.auth ? { accessToken: opts.auth.accessToken } : {}),
     ...(userId ? { userId } : {}),
     store: new MemoryStore(),
     logger,
     timelineSupport: true,
   });
+
+  if ('user' in opts.auth) {
+    await client.loginRequest({
+      type: 'm.login.password',
+      identifier: loginIdentifier(opts.auth.user),
+      password: opts.auth.password,
+      initial_device_display_name: 'kaytoo',
+    });
+  }
 
   const onTimeline = async (
     event: MatrixEvent,

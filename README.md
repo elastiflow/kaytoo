@@ -101,7 +101,7 @@ Kaytoo is configured via environment variables. For a minimal example, see `.env
 **Chat adapters** - configure at least one to run in chat mode. Kaytoo posts scheduled insights to every configured platform and answers chat replies on the same platform a message arrives from. See the per-platform setup and full variable tables below:
 
 - [Slack](#slack): `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `SLACK_CHANNEL_ID`
-- [Matrix](#matrix): `MATRIX_HOMESERVER`, `MATRIX_ACCESS_TOKEN`, `MATRIX_DEFAULT_ROOM_ID`
+- [Matrix](#matrix): `MATRIX_HOMESERVER`, `MATRIX_DEFAULT_ROOM_ID`, plus either `MATRIX_ACCESS_TOKEN` or `MATRIX_USER` + `MATRIX_PASSWORD`
 - [Mattermost](#mattermost): `MATTERMOST_URL`, `MATTERMOST_TOKEN`, `MATTERMOST_CHANNEL_ID`
 
 **Search backend** (Choose either OpenSearch or Elasticsearch. Do not set both)
@@ -202,8 +202,12 @@ Uses [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk) with an in-m
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
 | `MATRIX_HOMESERVER` | yes | - | Homeserver base URL. |
-| `MATRIX_ACCESS_TOKEN` | yes | - | Access token for the bot user. |
+| `MATRIX_ACCESS_TOKEN` | one-of | - | Long-lived access token for the bot user. Required if `MATRIX_USER`/`MATRIX_PASSWORD` are not set. |
+| `MATRIX_USER` | one-of | - | Username or full MXID for password login. Required together with `MATRIX_PASSWORD` if no access token is provided. |
+| `MATRIX_PASSWORD` | one-of | - | Password for `MATRIX_USER`. Kaytoo logs in via `matrix-js-sdk` using `m.login.password` at startup. |
 | `MATRIX_DEFAULT_ROOM_ID` | yes | - | Room for scheduled insight posts. Kaytoo also attempts to join it on startup. |
+
+Provide **either** `MATRIX_ACCESS_TOKEN` **or** the `MATRIX_USER` + `MATRIX_PASSWORD` pair, not both. Token auth is preferred when the homeserver supports it.
 
 ##### Setup
 
@@ -211,12 +215,14 @@ Uses [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk) with an in-m
    - If registration is closed, have a homeserver admin create the account.
    - Log in once with a Matrix client (for example Element) to confirm the account works.
 
-2. **Create an access token** for that user.
-   - In Element Web: open **Help & About** -> **Advanced** -> **Access Token** (wording varies by client).
+2. **Pick an authentication method:**
+   - **Access token** (preferred when available): in Element Web open **Help & About** -> **Advanced** -> **Access Token** (wording varies by client).
+   - **Username + password** (fallback for homeservers that do not expose a token UI): use the same credentials your bot logs in with.
 
 3. **Set Kaytoo env vars**:
    - `MATRIX_HOMESERVER` should be the **client API base URL** for your homeserver (often `https://matrix.example.com`, not always the same host as your MXID server part).
-   - `MATRIX_ACCESS_TOKEN` is the token from step 2.
+   - For token auth: set `MATRIX_ACCESS_TOKEN` from step 2.
+   - For password auth: set `MATRIX_USER` (localpart `kaytoo` or full MXID `@kaytoo:matrix.example.org`) and `MATRIX_PASSWORD`.
 
 4. **Room membership**:
    - Invite the bot user into each room where Kaytoo should respond.
