@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createOpenAiCompatClient } from '../src/llm/openaiCompat.js';
+import { createOpenAiCompatClient, resetOpenAiCompatResolveCache } from '../src/llm/openaiCompat.js';
 import { useSilentLogging } from './helpers/index.js';
 
 const okSummaryJson = (text: string, post = true) => ({
@@ -9,6 +9,9 @@ const okSummaryJson = (text: string, post = true) => ({
 
 describe('llm', () => {
   useSilentLogging(beforeEach, afterEach);
+  afterEach(() => {
+    resetOpenAiCompatResolveCache();
+  });
 
   it('uses /v1/chat/completions when baseUrl ends in /v1 (no probe)', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(okSummaryJson('hello'));
@@ -199,8 +202,29 @@ describe('llm', () => {
     });
 
     await expect(llm.chatCompletions({ messages: [{ role: 'user', content: 'hi' }] })).rejects.toThrow(
-      /model=wrong-model.*url=https:\/\/ai\.example\.com\/api\/v1\/chat\/completions/s,
+      /model=wrong-model.*url=https:\/\/ai\.example\.com\/api\/v1\/chat\/completions.*LiteLLM\/OpenWebUI/s,
     );
+  });
+
+  it('shares one /models probe when multiple clients use the same baseUrl and apiKey', async () => {
+    const fetchSpy = vi.fn().mockImplementation((url: string, init: RequestInit) => {
+      if (init.method === 'GET' && url.endsWith('/api/v1/models')) {
+        return Promise.resolve({ ok: true, json: async () => ({ data: [] }) });
+      }
+      return Promise.resolve(okSummaryJson('ok'));
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const a = createOpenAiCompatClient({ baseUrl: 'https://share.example.com', apiKey: 'sek', model: 'm1' });
+    const b = createOpenAiCompatClient({ baseUrl: 'https://share.example.com', apiKey: 'sek', model: 'm2' });
+
+    await Promise.all([
+      a.chatCompletions({ messages: [{ role: 'user', content: 'a' }] }),
+      b.chatCompletions({ messages: [{ role: 'user', content: 'b' }] }),
+    ]);
+
+    expect(fetchSpy.mock.calls.filter((c) => String(c[0]).endsWith('/api/v1/models'))).toHaveLength(1);
+    expect(fetchSpy.mock.calls.filter((c) => String(c[0]).endsWith('/api/v1/chat/completions'))).toHaveLength(2);
   });
 
   it('throws when content is empty or non-JSON', async () => {

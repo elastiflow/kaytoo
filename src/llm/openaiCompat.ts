@@ -45,11 +45,34 @@ async function resolveChatUrl(baseUrl: string, apiKey: string, log: PinoLogger):
   return `${baseUrl}/v1/chat/completions`;
 }
 
+const resolveChatUrlByBaseAndKey = new Map<string, Promise<string>>();
+
+function sharedResolveChatUrl(baseUrl: string, apiKey: string, log: PinoLogger): Promise<string> {
+  const key = `${baseUrl}\0${apiKey}`;
+  const hit = resolveChatUrlByBaseAndKey.get(key);
+  if (hit) return hit;
+  const p = resolveChatUrl(baseUrl, apiKey, log);
+  resolveChatUrlByBaseAndKey.set(key, p);
+  return p;
+}
+
+/** Test helper: clears cached /models probe so fetch mocks stay isolated. */
+export function resetOpenAiCompatResolveCache(): void {
+  resolveChatUrlByBaseAndKey.clear();
+}
+
+function llmErrorBodyHint(body: string): string {
+  if (/NoneType.*startswith|startswith.*NoneType/i.test(body)) {
+    return ' LiteLLM/OpenWebUI often emits this when the model id is not registered on the gateway; match LLM_MODEL to the admin model list exactly.';
+  }
+  return '';
+}
+
 export function createOpenAiCompatClient(config: OpenAiCompatConfig): LlmClient {
   const log = getLogger({ component: 'llm' });
   const baseUrl = config.baseUrl.replace(/\/+$/, '');
   const includeBodies = config.includeDebugBodies ?? false;
-  const chatUrlPromise = resolveChatUrl(baseUrl, config.apiKey, log);
+  const chatUrlPromise = sharedResolveChatUrl(baseUrl, config.apiKey, log);
 
   return {
     async chatCompletions(input: { messages: ChatMessage[]; temperature?: number; maxTokens?: number }) {
@@ -89,8 +112,9 @@ export function createOpenAiCompatClient(config: OpenAiCompatConfig): LlmClient 
             await sleepMs(waitMs);
             return postWith429Retries(r429 + 1);
           }
+          const hint = llmErrorBodyHint(text);
           throw new Error(
-            `LLM request failed: ${resp.status} ${resp.statusText} (model=${config.model}, url=${chatUrl})${text ? `\n${text}` : ''}`,
+            `LLM request failed: ${resp.status} ${resp.statusText} (model=${config.model}, url=${chatUrl})${text ? `\n${text}` : ''}${hint ? `\n${hint}` : ''}`,
           );
         };
 
