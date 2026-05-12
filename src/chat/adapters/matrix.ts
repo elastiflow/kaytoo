@@ -117,7 +117,10 @@ export async function startMatrixAdapter(opts: {
       await client.joinRoom(opts.defaultRoomId);
       log.info({ roomId: opts.defaultRoomId }, 'matrix joined default room');
     } catch (e) {
-      log.warn({ roomId: opts.defaultRoomId, err: e }, 'matrix failed to join default room');
+      log.error(
+        { roomId: opts.defaultRoomId, botUserId: client.getUserId() ?? undefined, err: e },
+        'matrix cannot join default room; invite the bot user, then restart',
+      );
     }
   }
 
