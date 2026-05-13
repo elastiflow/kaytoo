@@ -74,6 +74,7 @@ import * as kb from '../src/knowledge/kbSearch.js';
 import * as mcp from '../src/agent/mcpJsonRpc.js';
 import * as probe from '../src/opensearch/mcpClient.js';
 import { createToolRegistry } from '../src/agent/tools/registry.js';
+import { coreToolSpecs } from '../src/agent/tools/toolSpecs.js';
 
 function baseEnv(extra: Record<string, string> = {}) {
   return {
@@ -218,6 +219,16 @@ describe('createToolRegistry', () => {
       expect(out.name).toBe(t.name);
     }
     expect(handler.mock.calls.length).toBeGreaterThan(15);
+  });
+
+  it('listTools includes every coreToolSpec when allowlist is empty', async () => {
+    const reg = await createToolRegistry({ config: getConfig(baseEnv()), policy: defaultAgentPolicy });
+    const listed = reg.listTools().map((t) => t.name);
+    // Length === coreToolSpecs only if baseEnv() does not list kbSearch/mcpToolCall.
+    expect(listed.length).toBe(coreToolSpecs.length);
+    for (const { name } of coreToolSpecs) {
+      expect(listed).toContain(name);
+    }
   });
 
   it('call coerces non-object args to {}', async () => {
