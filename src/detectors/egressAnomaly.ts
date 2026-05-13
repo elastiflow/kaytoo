@@ -1,5 +1,8 @@
 import type { KaytooConfig } from '../config.js';
 import type { EgressAggRow } from '../opensearch/queries/index.js';
+import { buildEgressComparisonFrame, buildEgressVolumeSummary } from '../insights/egressInsightCopy.js';
+import type { EgressInsightMode } from '../insights/egressInsightPolicy.js';
+import { formatBytesHuman, formatEndpointLabel } from '../util/formatInsight.js';
 import { egressDedupeKey, ipv6GlobalUnicastPrefix64 } from '../util/egressDedupeKey.js';
 import type { Finding } from './types.js';
 
@@ -40,6 +43,7 @@ function foldCurrent(rows: EgressAggRow[]): CurrentAcc {
 }
 
 function egressFindingForKey(opts: {
+  mode: EgressInsightMode;
   key: string;
   totalBytes: number;
   sampleRow: EgressAggRow;
@@ -51,7 +55,8 @@ function egressFindingForKey(opts: {
   currentMinutes: number;
   window: { from: string; to: string };
 }): Finding | null {
-  const { key, totalBytes, sampleRow, srcIpsByKey, baselineByKey, expectedScale, thresholds, baselineMinutes, currentMinutes, window } = opts;
+  const { mode, key, totalBytes, sampleRow, srcIpsByKey, baselineByKey, expectedScale, thresholds, baselineMinutes, currentMinutes, window } =
+    opts;
   const baselineBytes = baselineByKey.get(key) ?? 0;
   const expectedBytes = baselineBytes * expectedScale;
   const threshold = Math.max(thresholds.egressMinBytes, expectedBytes * thresholds.egressMultiplier);
@@ -61,17 +66,12 @@ function egressFindingForKey(opts: {
   const severity: Finding['severity'] =
     totalBytes > threshold * 5 ? 'high' : totalBytes > threshold * 2 ? 'medium' : 'low';
 
-  const id = `egress:${key}`;
+  const id = `${mode === 'spike' ? 'egress_spike' : 'egress'}:${key}`;
   const p64 = ipv6GlobalUnicastPrefix64(sampleRow.srcIp);
-  const title = p64 ? `Unusual egress from IPv6 /64 ${p64}` : `Unusual egress from ${sampleRow.srcIp}`;
-  const summary =
-    expectedBytes > 0
-      ? p64
-        ? `IPv6 /64 ${p64}: ${totalBytes.toLocaleString()} bytes vs expected ~${Math.round(expectedBytes).toLocaleString()} (${ratio.toFixed(1)}x); top host ${sampleRow.srcIp}.`
-        : `${sampleRow.srcIp} transferred ${Math.round(totalBytes).toLocaleString()} bytes vs expected ~${Math.round(expectedBytes).toLocaleString()} bytes (${ratio.toFixed(1)}x).`
-      : p64
-        ? `IPv6 /64 ${p64}: ${totalBytes.toLocaleString()} bytes (no baseline for comparison); top host ${sampleRow.srcIp}.`
-        : `${sampleRow.srcIp} transferred ${Math.round(totalBytes).toLocaleString()} bytes (no baseline for comparison).`;
+  const srcLabel = formatEndpointLabel({ displayName: sampleRow.srcDisplayName, ip: sampleRow.srcIp });
+  const title = p64 ? `Unusual egress from IPv6 /64 ${p64}` : `Unusual egress from ${srcLabel}`;
+  const vol = buildEgressVolumeSummary(totalBytes, expectedBytes, ratio);
+  const summary = p64 ? `IPv6 /64 ${p64}: ${vol} top host ${srcLabel}.` : `${srcLabel}: ${vol}`;
 
   const contributingSrcIps = [...(srcIpsByKey.get(key) ?? new Set())].sort();
 
@@ -82,11 +82,17 @@ function egressFindingForKey(opts: {
     title,
     summary,
     evidence: {
+      egressInsightMode: mode,
       egressKey: key,
       srcIp: sampleRow.srcIp,
+      srcDisplayName: sampleRow.srcDisplayName,
       contributingSrcIps,
       bytes: totalBytes,
+      bytesHuman: formatBytesHuman(totalBytes),
       expectedBytes,
+      expectedBytesHuman: expectedBytes > 0 ? formatBytesHuman(expectedBytes) : undefined,
+      volumeSummary: vol,
+      comparisonFrame: buildEgressComparisonFrame(mode, currentMinutes, baselineMinutes),
       baselineBytes,
       baselineMinutes,
       currentMinutes,
@@ -100,6 +106,7 @@ function egressFindingForKey(opts: {
 }
 
 export function detectEgressAnomalies(opts: {
+  mode?: EgressInsightMode;
   window: { from: string; to: string };
   current: EgressAggRow[];
   baseline: EgressAggRow[];
@@ -107,6 +114,7 @@ export function detectEgressAnomalies(opts: {
   baselineMinutes: number;
   currentMinutes: number;
 }): Finding[] {
+  const mode = opts.mode ?? 'primary';
   const expectedScale = opts.currentMinutes / opts.baselineMinutes;
   const baselineByKey = foldBaseline(opts.baseline);
   const { bytesByKey, maxRowByKey, srcIpsByKey } = foldCurrent(opts.current);
@@ -115,6 +123,7 @@ export function detectEgressAnomalies(opts: {
     const sampleRow = maxRowByKey.get(key);
     if (!sampleRow?.srcIp) return [];
     const f = egressFindingForKey({
+      mode,
       key,
       totalBytes,
       sampleRow,

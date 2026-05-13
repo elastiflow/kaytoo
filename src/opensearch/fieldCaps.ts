@@ -9,8 +9,8 @@ export type FieldPreference = {
   srcPortField: string;
   dstPortField: string;
   protoField?: string;
-  podNameField?: string; // source/client
-  clientNamespaceField?: string; // source/client
+  podNameField?: string;
+  clientNamespaceField?: string;
   dstPodNameField?: string;
   dstNamespaceField?: string;
   dstServiceNameField?: string;
@@ -18,54 +18,71 @@ export type FieldPreference = {
   availabilityZoneField?: string;
   srcNodeField?: string;
   dstNodeField?: string;
+  srcDisplayNameField?: string;
+  dstDisplayNameField?: string;
   durationMsField?: string;
   tcpFlagsField?: string;
   ipVersionField?: string;
 };
 
 const candidateFields = {
-  bytes: ['flow.bytes', 'network.bytes'],
-  srcIp: ['flow.client.ip.addr', 'source.ip'],
-  dstIp: ['flow.server.ip.addr', 'destination.ip'],
+  bytes: ['flow.bytes', 'flow.bytes.delta', 'flow.bytes.total', 'network.bytes'],
+  srcIp: ['flow.client.ip.addr', 'source.address', 'source.ip', 'flow.src.ip.addr'],
+  dstIp: ['flow.server.ip.addr', 'destination.address', 'destination.ip', 'flow.dst.ip.addr'],
   srcPort: ['flow.client.port', 'source.port'],
   dstPort: ['flow.server.port', 'destination.port'],
   proto: ['l4.proto.name', 'network.transport'],
   podName: [
-    // Mermin / ElastiFlow flow span fields
+    'source.k8s.pod.name',
     'flow.client.k8s.pod.name',
     'flow.src.k8s.pod.name',
-    // Generic / other pipelines
     'kubernetes.pod.name',
     'k8s.pod.name',
     'orchestrator.resource.name',
   ],
-  packets: ['network.packets', 'flow.packets'],
+  packets: ['flow.packets.delta', 'network.packets', 'flow.packets'],
   availabilityZone: ['cloud.availability_zone', 'cloud.region', 'availability_zone'],
   dstPodName: [
+    'destination.k8s.pod.name',
     'flow.server.k8s.pod.name',
     'flow.dst.k8s.pod.name',
     'destination.kubernetes.pod.name',
     'kubernetes.pod.name',
   ],
   dstNamespace: [
+    'destination.k8s.namespace.name',
     'flow.server.k8s.namespace.name',
     'flow.dst.k8s.namespace.name',
     'destination.kubernetes.namespace',
     'kubernetes.namespace',
   ],
   dstServiceName: [
+    'destination.k8s.service.name',
     'flow.server.k8s.service.name',
     'flow.dst.k8s.service.name',
     'kubernetes.service.name',
     'destination.service.name',
   ],
-  srcNode: ['flow.client.k8s.node.name', 'flow.src.k8s.node.name', 'kubernetes.node.name', 'source.node.name', 'host.name'],
-  dstNode: ['flow.server.k8s.node.name', 'flow.dst.k8s.node.name', 'destination.node.name', 'host.name'],
+  srcNode: [
+    'source.k8s.node.name',
+    'flow.client.k8s.node.name',
+    'flow.src.k8s.node.name',
+    'kubernetes.node.name',
+    'source.node.name',
+    'host.name',
+  ],
+  dstNode: [
+    'destination.k8s.node.name',
+    'flow.server.k8s.node.name',
+    'flow.dst.k8s.node.name',
+    'destination.node.name',
+    'host.name',
+  ],
   durationMs: ['event.duration', 'flow.duration', 'network.duration'],
-  tcpFlags: ['tcp.flags', 'flow.tcp.flags', 'network.tcp.flags'],
-  ipVersion: ['network.type', 'network.iana_number', 'ip.version'],
+  tcpFlags: ['flow.tcp.flags.bits', 'tcp.flags', 'flow.tcp.flags', 'network.tcp.flags'],
+  ipVersion: ['network.type', 'network.iana_number', 'ip.version', 'ip.version.name'],
   clientNamespace: [
-    // Mermin / ElastiFlow flow span fields
+    'source.k8s.namespace.name',
     'flow.client.k8s.namespace.name',
     'flow.src.k8s.namespace.name',
     'kubernetes.namespace',
@@ -73,6 +90,33 @@ const candidateFields = {
     'k8s.namespace.name',
     'source.namespace',
     'orchestrator.namespace',
+  ],
+  srcDisplayName: [
+    'source.k8s.pod.name',
+    'source.k8s.service.name',
+    'source.k8s.deployment.name',
+    'source.k8s.statefulset.name',
+    'source.k8s.node.name',
+    'process.executable.name',
+    'source.container.name',
+    'source.k8s.container.name',
+    'flow.client.k8s.pod.name',
+    'flow.src.k8s.pod.name',
+    'flow.client.host.name',
+    'flow.src.host.name',
+    'kubernetes.pod.name',
+    'host.name',
+  ],
+  dstDisplayName: [
+    'destination.k8s.pod.name',
+    'destination.k8s.service.name',
+    'destination.k8s.deployment.name',
+    'destination.k8s.node.name',
+    'flow.server.k8s.pod.name',
+    'flow.dst.k8s.pod.name',
+    'destination.kubernetes.pod.name',
+    'flow.server.host.name',
+    'flow.dst.host.name',
   ],
 };
 
@@ -215,6 +259,8 @@ export async function chooseFields(opts: {
     durationMsField,
     tcpFlagsField,
     ipVersionField,
+    srcDisplayNameField,
+    dstDisplayNameField,
   ] = await Promise.all([
     resolveField({ client: opts.client, index: opts.index, patterns: candidateFields.podName }),
     resolveField({ client: opts.client, index: opts.index, patterns: candidateFields.packets }),
@@ -228,6 +274,8 @@ export async function chooseFields(opts: {
     resolveField({ client: opts.client, index: opts.index, patterns: candidateFields.durationMs }),
     resolveField({ client: opts.client, index: opts.index, patterns: candidateFields.tcpFlags }),
     resolveField({ client: opts.client, index: opts.index, patterns: candidateFields.ipVersion }),
+    resolveField({ client: opts.client, index: opts.index, patterns: candidateFields.srcDisplayName }),
+    resolveField({ client: opts.client, index: opts.index, patterns: candidateFields.dstDisplayName }),
   ]);
 
   return {
@@ -249,6 +297,8 @@ export async function chooseFields(opts: {
     ...(durationMsField ? { durationMsField } : {}),
     ...(tcpFlagsField ? { tcpFlagsField } : {}),
     ...(ipVersionField ? { ipVersionField } : {}),
+    ...(srcDisplayNameField ? { srcDisplayNameField } : {}),
+    ...(dstDisplayNameField ? { dstDisplayNameField } : {}),
   };
 }
 

@@ -21,6 +21,7 @@ import {
 } from './opensearchDetections.js';
 import { selectNovelInsightPostBatch, shouldSkipHeuristicPoll } from './pollUtils.js';
 import { enrichInsightsEgressBatch } from './enrichEgressEvidence.js';
+import { egressInsightWindows } from './egressInsightPolicy.js';
 
 function detectionFetchFailure(e: unknown): DetectionFetchResult {
   return { ok: false, findings: [], warning: thrownMessage(e) };
@@ -46,7 +47,13 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     signal: controller.signal,
   });
   log.info(
-    { srcIpField: fields.srcIpField, bytesField: fields.bytesField, dstIpField: fields.dstIpField },
+    {
+      srcIpField: fields.srcIpField,
+      bytesField: fields.bytesField,
+      dstIpField: fields.dstIpField,
+      srcDisplayNameField: fields.srcDisplayNameField,
+      dstDisplayNameField: fields.dstDisplayNameField,
+    },
     'resolved opensearch field mapping',
   );
 
@@ -105,20 +112,27 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
           return;
         }
 
-        const currentMinutes = 15;
-        const baselineMinutes = 24 * 60;
+        const { primary, spike } = egressInsightWindows;
         const portscanMinutes = 5;
 
-        const currentWindow = windowRelative({ to: now, minutesBack: currentMinutes });
-        const baselineWindow = windowRelative({ to: now, minutesBack: baselineMinutes });
+        const baselineWindow = windowRelative({ to: now, minutesBack: primary.baselineMinutes });
+        const primaryCurrentWindow = windowRelative({ to: now, minutesBack: primary.currentMinutes });
+        const spikeCurrentWindow = windowRelative({ to: now, minutesBack: spike.currentMinutes });
         const portscanWindow = windowRelative({ to: now, minutesBack: portscanMinutes });
 
-        const [currentEgress, baselineEgress, portscanRows] = await Promise.all([
+        const [primaryCurrentEgress, spikeCurrentEgress, baselineEgress, portscanRows] = await Promise.all([
           queryTopEgressBySource({
             client,
             index: config.search.indexPattern,
             fields,
-            window: currentWindow,
+            window: primaryCurrentWindow,
+            size: 25,
+          }),
+          queryTopEgressBySource({
+            client,
+            index: config.search.indexPattern,
+            fields,
+            window: spikeCurrentWindow,
             size: 25,
           }),
           queryTopEgressBySource({
@@ -139,12 +153,22 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
 
         const findings: Finding[] = [
           ...detectEgressAnomalies({
-            window: currentWindow,
-            current: currentEgress,
+            mode: 'primary',
+            window: primaryCurrentWindow,
+            current: primaryCurrentEgress,
             baseline: baselineEgress,
             thresholds: config.thresholds,
-            baselineMinutes,
-            currentMinutes,
+            baselineMinutes: primary.baselineMinutes,
+            currentMinutes: primary.currentMinutes,
+          }),
+          ...detectEgressAnomalies({
+            mode: 'spike',
+            window: spikeCurrentWindow,
+            current: spikeCurrentEgress,
+            baseline: baselineEgress,
+            thresholds: config.thresholds,
+            baselineMinutes: spike.baselineMinutes,
+            currentMinutes: spike.currentMinutes,
           }),
           ...detectPortScans({
             window: portscanWindow,

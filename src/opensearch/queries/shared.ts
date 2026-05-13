@@ -46,3 +46,14 @@ export function getBuckets(body: unknown, path: string[]): AggBucket[] {
   if (!Array.isArray(buckets)) return [];
   return buckets.filter((b): b is AggBucket => !!b && typeof b === 'object');
 }
+
+/** First key from a `terms` sub-aggregation under a parent bucket (e.g. dominant display name by bytes). */
+export function topTermsLabelFromBucket(bucket: Record<string, unknown>, subAggName: string): string | undefined {
+  const sub = bucket[subAggName];
+  if (!sub || typeof sub !== 'object') return undefined;
+  const raw = (sub as { buckets?: unknown }).buckets;
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const first = raw[0] as Record<string, unknown>;
+  const s = toString(first['key']);
+  return s || undefined;
+}

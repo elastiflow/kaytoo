@@ -56,7 +56,7 @@ describe('egress and portscan detectors', () => {
       currentMinutes: 60,
     });
     expect(high[0]?.severity).toBe('high');
-    expect(high[0]?.summary).toMatch(/vs expected/i);
+    expect(high[0]?.summary).toMatch(/expected \(/);
   });
 
   it('detectPortScans covers skip branches and high/medium severities', () => {
@@ -88,6 +88,43 @@ describe('egress and portscan detectors', () => {
       thresholds,
     });
     expect(high[0]?.severity).toBe('high');
+  });
+
+  it('detectEgressAnomalies spike mode uses egress_spike id prefix', () => {
+    const thresholds = {
+      egressMultiplier: 2,
+      egressMinBytes: 10,
+      portscanDistinctDstPorts: 50,
+      portscanMinPackets: 200,
+    };
+    const findings = detectEgressAnomalies({
+      mode: 'spike',
+      window: { from: 'a', to: 'b' },
+      current: [{ srcIp: '9.9.9.9', bytes: 500 }],
+      baseline: [],
+      thresholds,
+      baselineMinutes: 60,
+      currentMinutes: 15,
+    });
+    expect(findings[0]?.id.startsWith('egress_spike:')).toBe(true);
+  });
+
+  it('uses srcDisplayName in title when present', () => {
+    const thresholds = {
+      egressMultiplier: 2,
+      egressMinBytes: 10,
+      portscanDistinctDstPorts: 50,
+      portscanMinPackets: 200,
+    };
+    const findings = detectEgressAnomalies({
+      window: { from: 'a', to: 'b' },
+      current: [{ srcIp: '10.0.0.2', bytes: 500, srcDisplayName: 'workload-a' }],
+      baseline: [],
+      thresholds,
+      baselineMinutes: 60,
+      currentMinutes: 15,
+    });
+    expect(findings[0]?.title).toContain('workload-a (10.0.0.2)');
   });
 
   it('flags IPs above baseline multiplier and min bytes for egress anomaly', () => {

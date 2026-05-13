@@ -92,7 +92,36 @@ describe('opensearch helpers', () => {
     expect(pref.clientNamespaceField).toBe('kubernetes.namespace');
   });
 
-  it('chooseFields prefers Mermin flow.* k8s fields when present', async () => {
+  it('chooseFields prefers Mermin source.k8s pod name over flow.client when both exist', async () => {
+    const { chooseFields } = await import('../../src/opensearch/fieldCaps.js');
+
+    const client = {
+      fieldCaps: vi.fn().mockResolvedValue({
+        body: {
+          fields: {
+            'flow.bytes': {},
+            'flow.client.ip.addr': {},
+            'flow.server.ip.addr': {},
+            'flow.client.port': {},
+            'flow.server.port': {},
+            'l4.proto.name': {},
+            'source.k8s.pod.name': {},
+            'flow.client.k8s.pod.name': {},
+            'source.k8s.namespace.name': {},
+            'flow.client.k8s.namespace.name': {},
+            'kubernetes.pod.name': {},
+            'kubernetes.namespace': {},
+          },
+        },
+      }),
+    };
+
+    const pref = await chooseFields({ client: client as never, index: 'idx-*' });
+    expect(pref.podNameField).toBe('source.k8s.pod.name');
+    expect(pref.clientNamespaceField).toBe('source.k8s.namespace.name');
+  });
+
+  it('chooseFields prefers legacy flow.client k8s fields when source.k8s is absent', async () => {
     const { chooseFields } = await import('../../src/opensearch/fieldCaps.js');
 
     const client = {
@@ -137,6 +166,79 @@ describe('opensearch helpers', () => {
     expect(pref.dstIpField).toBe('flow.server.ip.addr');
     expect(pref.protoField).toBe('l4.proto.name');
     expect(pref.clientNamespaceField).toBeUndefined();
+  });
+
+  it('chooseFields resolves flow host fields for display when k8s names absent', async () => {
+    const { chooseFields } = await import('../../src/opensearch/fieldCaps.js');
+
+    const client = {
+      fieldCaps: vi.fn().mockResolvedValue({
+        body: {
+          fields: {
+            'flow.bytes': {},
+            'flow.client.ip.addr': {},
+            'flow.server.ip.addr': {},
+            'flow.client.port': {},
+            'flow.server.port': {},
+            'l4.proto.name': {},
+            'flow.client.host.name': {},
+            'flow.server.host.name': {},
+          },
+        },
+      }),
+    };
+
+    const pref = await chooseFields({ client: client as never, index: 'idx-*' });
+    expect(pref.srcDisplayNameField).toBe('flow.client.host.name');
+    expect(pref.dstDisplayNameField).toBe('flow.server.host.name');
+  });
+
+  it('chooseFields prefers flow.client.ip over flow.src.ip when both exist', async () => {
+    const { chooseFields } = await import('../../src/opensearch/fieldCaps.js');
+
+    const client = {
+      fieldCaps: vi.fn().mockResolvedValue({
+        body: {
+          fields: {
+            'flow.bytes': {},
+            'flow.client.ip.addr': {},
+            'flow.src.ip.addr': {},
+            'flow.server.ip.addr': {},
+            'flow.dst.ip.addr': {},
+            'flow.client.port': {},
+            'flow.server.port': {},
+            'l4.proto.name': {},
+          },
+        },
+      }),
+    };
+
+    const pref = await chooseFields({ client: client as never, index: 'idx-*' });
+    expect(pref.srcIpField).toBe('flow.client.ip.addr');
+    expect(pref.dstIpField).toBe('flow.server.ip.addr');
+  });
+
+  it('chooseFields falls back to flow src/dst ip when client/server ip absent', async () => {
+    const { chooseFields } = await import('../../src/opensearch/fieldCaps.js');
+
+    const client = {
+      fieldCaps: vi.fn().mockResolvedValue({
+        body: {
+          fields: {
+            'flow.bytes': {},
+            'flow.src.ip.addr': {},
+            'flow.dst.ip.addr': {},
+            'flow.client.port': {},
+            'flow.server.port': {},
+            'l4.proto.name': {},
+          },
+        },
+      }),
+    };
+
+    const pref = await chooseFields({ client: client as never, index: 'idx-*' });
+    expect(pref.srcIpField).toBe('flow.src.ip.addr');
+    expect(pref.dstIpField).toBe('flow.dst.ip.addr');
   });
 
   it('queryTopDestinationsByFanIn maps aggregations and optional internal filter', async () => {
@@ -403,6 +505,47 @@ describe('opensearch helpers', () => {
       size: 10,
     });
     expect(rare).toEqual([{ dstIp: '9.9.9.9', score: 12, docCount: 3, bytes: 100 }]);
+  });
+
+  it('queryTopEgressBySource maps top_src_display when srcDisplayNameField is set', async () => {
+    const { queryTopEgressBySource } = await import('../../src/opensearch/queries/index.js');
+
+    const client = {
+      search: vi.fn().mockResolvedValue({
+        body: {
+          aggregations: {
+            by_src: {
+              buckets: [
+                {
+                  key: '1.1.1.1',
+                  bytes: { value: 100 },
+                  top_src_display: { buckets: [{ key: 'pod-x', doc_count: 1, lbl_bytes: { value: 100 } }] },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    };
+
+    const fields = {
+      bytesField: 'b',
+      srcIpField: 's',
+      dstIpField: 'd',
+      srcPortField: 'sp',
+      dstPortField: 'dp',
+      protoField: 'p',
+      srcDisplayNameField: 'sn',
+    };
+
+    const rows = await queryTopEgressBySource({
+      client: client as never,
+      index: 'i',
+      fields,
+      window: { from: 'a', to: 'b' },
+      size: 5,
+    });
+    expect(rows).toEqual([{ srcIp: '1.1.1.1', bytes: 100, srcDisplayName: 'pod-x' }]);
   });
 
   it('queryTopEgressBySource returns [] when aggregation shape is missing', async () => {

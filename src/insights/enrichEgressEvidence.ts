@@ -1,9 +1,10 @@
 import type { Logger } from 'pino';
 import type { Finding } from '../detectors/types.js';
 import type { FieldPreference } from '../opensearch/fieldCaps.js';
-import { getBuckets, timedSearch, toNumber, toString, type AggValue } from '../opensearch/queries/shared.js';
+import { getBuckets, timedSearch, toNumber, toString, topTermsLabelFromBucket, type AggValue } from '../opensearch/queries/shared.js';
 import type { SearchClient } from '../search/types.js';
 import { logErr } from '../logging/logger.js';
+import { formatEndpointLabel } from '../util/formatInsight.js';
 
 const MAX_SRC_TERMS = 16;
 const TOP_DST = 8;
@@ -24,14 +25,38 @@ export async function enrichEgressFinding(opts: {
   const srcIpList = raw.slice(0, MAX_SRC_TERMS);
   if (srcIpList.length === 0) return finding;
 
+  const dstDisplayField = fields.dstDisplayNameField;
+  const protoField = fields.protoField;
+  const byDstAggs: Record<string, unknown> = {
+    dst_bytes: { sum: { field: fields.bytesField } },
+    ...(dstDisplayField
+      ? {
+          top_dst_display: {
+            terms: { field: dstDisplayField, size: 1, order: { dnm: 'desc' } },
+            aggs: { dnm: { sum: { field: fields.bytesField } } },
+          },
+        }
+      : {}),
+  };
+
   const aggs: Record<string, unknown> = {
     by_dst: {
       terms: { field: fields.dstIpField, size: TOP_DST, order: { dst_bytes: 'desc' } },
-      aggs: { dst_bytes: { sum: { field: fields.bytesField } } },
+      aggs: byDstAggs,
     },
     by_dport: {
       terms: { field: fields.dstPortField, size: TOP_PORT, order: { pbytes: 'desc' } },
-      aggs: { pbytes: { sum: { field: fields.bytesField } } },
+      aggs: {
+        pbytes: { sum: { field: fields.bytesField } },
+        ...(protoField
+          ? {
+              top_proto: {
+                terms: { field: protoField, size: 1, order: { pproto: 'desc' } },
+                aggs: { pproto: { sum: { field: fields.bytesField } } },
+              },
+            }
+          : {}),
+      },
     },
   };
   if (fields.clientNamespaceField) {
@@ -70,14 +95,30 @@ export async function enrichEgressFinding(opts: {
 
   const body = (res as { body?: unknown })?.body;
   const topDestinations = getBuckets(body as unknown, ['aggregations', 'by_dst', 'buckets']).map((b) => {
-    const bytes = toNumber((b['dst_bytes'] as AggValue | undefined)?.value);
-    return { dstIp: toString(b['key']), bytes, flows: toNumber(b['doc_count']) };
+    const rec = b as Record<string, unknown>;
+    const bytes = toNumber((rec['dst_bytes'] as AggValue | undefined)?.value);
+    const dstIp = toString(rec['key']);
+    const dstDisplayName = dstDisplayField ? topTermsLabelFromBucket(rec, 'top_dst_display') : undefined;
+    return {
+      dstIp,
+      ...(dstDisplayName ? { dstDisplayName } : {}),
+      dstEndpointLabel: formatEndpointLabel({ displayName: dstDisplayName, ip: dstIp }),
+      bytes,
+      flows: toNumber(rec['doc_count']),
+    };
   });
   const topDstPorts = getBuckets(body as unknown, ['aggregations', 'by_dport', 'buckets']).map((b) => {
-    const bytes = toNumber((b['pbytes'] as AggValue | undefined)?.value);
-    const k = b['key'];
+    const rec = b as Record<string, unknown>;
+    const bytes = toNumber((rec['pbytes'] as AggValue | undefined)?.value);
+    const k = rec['key'];
     const port = typeof k === 'number' && Number.isFinite(k) ? k : Number.parseInt(String(k), 10) || 0;
-    return { port, bytes, flows: toNumber(b['doc_count']) };
+    const protocol = protoField ? topTermsLabelFromBucket(rec, 'top_proto') : undefined;
+    return {
+      port,
+      bytes,
+      flows: toNumber(rec['doc_count']),
+      ...(protocol ? { protocol } : {}),
+    };
   });
 
   const topClientNamespaces = fields.clientNamespaceField
