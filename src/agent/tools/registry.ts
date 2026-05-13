@@ -60,8 +60,8 @@ export async function createToolRegistry(opts: {
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<ToolHandlerResult>>();
 
   for (const spec of coreToolSpecs) {
-    const run = spec.bind(ctxBundle);
-    handlers.set(spec.name, (args) => run(args).then((result) => ({ ok: true as const, result })));
+    const bound = spec.bind(ctxBundle);
+    handlers.set(spec.name, (args) => bound(args).then((result) => ({ ok: true as const, result })));
   }
 
   handlers.set('kbSearch', async (args) => {
@@ -97,7 +97,6 @@ export async function createToolRegistry(opts: {
     listTools() {
       return exposed;
     },
-
     async call(tool: ToolCall): Promise<ToolResult> {
       if (!isAgentToolAllowed(tool.name, allow)) {
         return { name: tool.name, ok: false, result: { error: 'tool not allowed by KAYTOO_AGENT_TOOL_ALLOWLIST' } };
