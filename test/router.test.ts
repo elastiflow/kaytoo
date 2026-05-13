@@ -76,6 +76,113 @@ describe('ChatRouter', () => {
     expect(posts.lines).toEqual(['agent reply']);
   });
 
+  it('skips stale chat when ingestOpenedAtMs set', async () => {
+    const posts = { lines: [] as string[] };
+    const notifier: Notifier = {
+      async post(input) {
+        posts.lines = [...posts.lines, input.text];
+      },
+    };
+    const agent: AgentRuntime = {
+      async respond() {
+        return { text: 'should not run' };
+      },
+      async resetConversation() {},
+      async getConversationDebug() {
+        return '';
+      },
+    };
+    const ingestOpenedAtMs = Date.parse('2024-06-01T12:00:00.000Z');
+    const router = new ChatRouter({
+      notifier,
+      agent,
+      status: async () => 'ok',
+      ingestOpenedAtMs,
+    });
+
+    await router.handleEvent({
+      type: 'message',
+      platform: 'slack',
+      address: { platform: 'slack', channelId: 'C1', threadId: 'T1' },
+      user: { id: 'U1' },
+      text: 'old backlog',
+      ts: '2024-06-01T11:00:00.000Z',
+    });
+
+    expect(posts.lines).toEqual([]);
+  });
+
+  it('routes chat at or after ingest open', async () => {
+    const posts = { lines: [] as string[] };
+    const notifier: Notifier = {
+      async post(input) {
+        posts.lines = [...posts.lines, input.text];
+      },
+    };
+    const agent: AgentRuntime = {
+      async respond() {
+        return { text: 'fresh reply' };
+      },
+      async resetConversation() {},
+      async getConversationDebug() {
+        return '';
+      },
+    };
+    const ingestOpenedAtMs = Date.parse('2024-06-01T12:00:00.000Z');
+    const router = new ChatRouter({
+      notifier,
+      agent,
+      status: async () => 'ok',
+      ingestOpenedAtMs,
+    });
+
+    await router.handleEvent({
+      type: 'message',
+      platform: 'slack',
+      address: { platform: 'slack', channelId: 'C1', threadId: 'T1' },
+      user: { id: 'U1' },
+      text: 'new question',
+      ts: '2024-06-01T12:00:10.000Z',
+    });
+
+    expect(posts.lines).toEqual(['fresh reply']);
+  });
+
+  it('does not filter when ts unparseable', async () => {
+    const posts = { lines: [] as string[] };
+    const notifier: Notifier = {
+      async post(input) {
+        posts.lines = [...posts.lines, input.text];
+      },
+    };
+    const agent: AgentRuntime = {
+      async respond() {
+        return { text: 'parsed anyway' };
+      },
+      async resetConversation() {},
+      async getConversationDebug() {
+        return '';
+      },
+    };
+    const router = new ChatRouter({
+      notifier,
+      agent,
+      status: async () => 'ok',
+      ingestOpenedAtMs: Date.now(),
+    });
+
+    await router.handleEvent({
+      type: 'message',
+      platform: 'slack',
+      address: { platform: 'slack', channelId: 'C1', threadId: 'T1' },
+      user: { id: 'U1' },
+      text: 'hello',
+      ts: 'bogus-ts',
+    });
+
+    expect(posts.lines).toEqual(['parsed anyway']);
+  });
+
   it('does not reject when agent.respond throws', async () => {
     const notifier: Notifier = { async post() {} };
     const agent: AgentRuntime = {

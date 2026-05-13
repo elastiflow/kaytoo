@@ -1,4 +1,5 @@
 import { getLogger } from '../logging/logger.js';
+import { createThrottle } from '../logging/throttle.js';
 import { z } from 'zod';
 import type { SearchClient } from '../search/types.js';
 import { candidateFields } from './fieldCandidates.js';
@@ -52,11 +53,9 @@ function decodeFieldCapsFields(fields: Record<string, unknown>): FieldCapsByFiel
   return out;
 }
 
-const warnAt: { nextAtMs: number } = { nextAtMs: 0 };
+const shouldWarnUnexpectedShape = createThrottle(10 * 60_000);
 function warnUnexpectedShape(msg: string): void {
-  const now = Date.now();
-  if (now < warnAt.nextAtMs) return;
-  warnAt.nextAtMs = now + 10 * 60_000;
+  if (!shouldWarnUnexpectedShape()) return;
   getLogger({ component: 'opensearch.fieldCaps' }).warn({ degradedMsg: msg }, 'unexpected fieldCaps response shape');
 }
 

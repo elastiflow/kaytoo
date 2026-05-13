@@ -1,7 +1,7 @@
 import type { Logger } from 'pino';
-import { logErr, withDurationMs } from '../logging/logger.js';
+import { withDurationMs } from '../logging/logger.js';
 import { isRecord } from '../util/guards.js';
-import { parseLenientTopLevelJson } from '../util/json.js';
+import { parseLenientOrNull } from '../util/json.js';
 import type { ChatMessage, LlmClient } from '../llm/types.js';
 import type { ConversationTurn } from '../storage/conversationStore.js';
 import type { ToolRegistry, ToolResult } from './tools/types.js';
@@ -39,11 +39,11 @@ export async function runAgentLoop(opts: {
     const { content } = await withDurationMs(opts.log, 'agent.chat_completions', () =>
       opts.llm.chatCompletions({ messages, temperature: 0.2 }),
     );
-    const parsed = safeJsonParse({ raw: content, log: opts.log, context: 'agent.response_parse' });
+    const parsed = parseLenientOrNull({ raw: content, log: opts.log, context: 'agent.response_parse' });
     if (!isRecord(parsed)) {
       if (looksLikeToolCalls(content) && !repairAttempted) {
         const repaired = await repairInvalidToolCalls({ llm: opts.llm, messages, badText: content });
-        const repairedParsed = safeJsonParse({ raw: repaired, log: opts.log, context: 'agent.response_repair_parse' });
+        const repairedParsed = parseLenientOrNull({ raw: repaired, log: opts.log, context: 'agent.response_repair_parse' });
         if (isRecord(repairedParsed)) {
           const toolCalls2 = normalizeToolCalls(repairedParsed['tool_calls'], opts.log, 'agent.tool_calls_repair_parse');
           if (Array.isArray(toolCalls2) && toolCalls2.length > 0) {
@@ -72,7 +72,7 @@ export async function runAgentLoop(opts: {
       }
       if (looksLikeToolCalls(reply) && !repairAttempted) {
         const repaired = await repairInvalidToolCalls({ llm: opts.llm, messages, badText: reply });
-        const repairedParsed = safeJsonParse({ raw: repaired, log: opts.log, context: 'agent.reply_repair_parse' });
+        const repairedParsed = parseLenientOrNull({ raw: repaired, log: opts.log, context: 'agent.reply_repair_parse' });
         if (isRecord(repairedParsed)) {
           const toolCalls2 = normalizeToolCalls(
             repairedParsed['tool_calls'],
@@ -123,14 +123,15 @@ async function repairInvalidToolCalls(opts: { llm: LlmClient; messages: ChatMess
 function normalizeToolCalls(v: unknown, log: Logger, context: string): unknown[] | null {
   if (Array.isArray(v)) return v;
   if (typeof v !== 'string') return null;
-  const parsed = safeJsonParse({ raw: v, log, context });
+  const parsed = parseLenientOrNull({ raw: v, log, context });
   if (Array.isArray(parsed)) return parsed as unknown[];
   if (isRecord(parsed) && Array.isArray(parsed['tool_calls'])) return parsed['tool_calls'] as unknown[];
   return null;
 }
 
 function extractToolCallsFromText(raw: string, log: Logger, context: string): unknown[] | null {
-  const parsed = safeJsonParse({ raw, log, context });
+  if (!looksLikeToolCalls(raw)) return null;
+  const parsed = parseLenientOrNull({ raw, log, context });
   if (isRecord(parsed) && Array.isArray(parsed['tool_calls'])) return parsed['tool_calls'] as unknown[];
   return null;
 }
@@ -148,29 +149,6 @@ function compressToMaxLines(text: string, maxLines: number): string {
 
   const head = lines.slice(0, Math.max(1, maxLines - 1));
   return [...head, '... (truncated; share vendor/platform + timestamps for deeper triage)'].join('\n');
-}
-
-const jsonParseWarnAt: { nextAtMs: number } = { nextAtMs: 0 };
-function warnJsonParseDegraded(opts: { log: Logger; context: string; raw: string; err: unknown }): void {
-  const now = Date.now();
-  if (now < jsonParseWarnAt.nextAtMs) return;
-  jsonParseWarnAt.nextAtMs = now + 10 * 60_000;
-  const snippet = opts.raw.length > 800 ? `${opts.raw.slice(0, 800)}...` : opts.raw;
-  opts.log.warn(
-    {
-      degradedContext: opts.context,
-      degradedSnippet: snippet,
-      ...logErr(opts.err),
-    },
-    'agent JSON parse degraded (falling back)',
-  );
-}
-
-function safeJsonParse(opts: { raw: string; log: Logger; context: string }): unknown {
-  const v = parseLenientTopLevelJson(opts.raw);
-  if (v !== null) return v;
-  warnJsonParseDegraded({ log: opts.log, context: opts.context, raw: opts.raw, err: new Error('unparseable JSON') });
-  return null;
 }
 
 async function runToolCalls(opts: {

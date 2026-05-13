@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { KaytooConfig } from '../config.js';
-import type { Logger } from 'pino';
 import { getLogger, logErr } from '../logging/logger.js';
 import { runWithLogContextAsync } from '../logging/context.js';
+import { createThrottle } from '../logging/throttle.js';
 import { createSearchClient } from '../search/client.js';
 import { waitForOpenSearchFieldMapping } from '../opensearch/waitForFieldMapping.js';
 import { queryPortscanCandidates, queryTopEgressBySource } from '../opensearch/queries/index.js';
@@ -62,7 +62,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     includeDebugBodies: config.logging.includeDebugBodies,
   });
   const dedupe = new DedupeStore(config.behavior.dedupeTtlSeconds * 1000);
-  const warnAt = new Map<string, number>();
+  const shouldWarnDegraded = createThrottle(10 * 60_000);
   let timer: NodeJS.Timeout | undefined;
   let inFlight = false;
 
@@ -98,8 +98,12 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
                 DetectionFetchResult,
               ]);
 
-        if (!alerting.ok && alerting.warning) rateLimitedWarn(log, warnAt, 'alerting', alerting.warning);
-        if (!ad.ok && ad.warning) rateLimitedWarn(log, warnAt, 'ad', ad.warning);
+        if (!alerting.ok && alerting.warning && shouldWarnDegraded('alerting')) {
+          log.warn({ degradedKey: 'alerting', degradedMsg: alerting.warning }, 'insights degraded');
+        }
+        if (!ad.ok && ad.warning && shouldWarnDegraded('ad')) {
+          log.warn({ degradedKey: 'ad', degradedMsg: ad.warning }, 'insights degraded');
+        }
 
         const backendFindings = [...alerting.findings, ...ad.findings];
         if (backendFindings.length > 0) {
@@ -239,12 +243,4 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       if (timer) clearTimeout(timer);
     },
   };
-}
-
-function rateLimitedWarn(log: Logger, map: Map<string, number>, key: string, msg: string): void {
-  const now = Date.now();
-  const next = map.get(key) ?? 0;
-  if (now < next) return;
-  log.warn({ degradedKey: key, degradedMsg: msg }, 'insights degraded');
-  map.set(key, now + 10 * 60_000);
 }

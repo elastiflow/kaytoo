@@ -1,5 +1,7 @@
 import pino from 'pino';
 import { initLogging, resetLogging } from '../../src/logging/logger.js';
+import { resetChatUrlCacheForTests } from '../../src/llm/openaiCompat.js';
+import { resetJsonParseWarnThrottlesForTests } from '../../src/util/json.js';
 
 /** Pino silent + reset between tests (Vitest hooks). */
 export function useSilentLogging(
@@ -8,6 +10,8 @@ export function useSilentLogging(
 ): void {
   beforeEach(() => {
     resetLogging();
+    resetChatUrlCacheForTests();
+    resetJsonParseWarnThrottlesForTests();
     initLogging({
       level: 'silent',
       redactPaths: [],
@@ -16,5 +20,7 @@ export function useSilentLogging(
   });
   afterEach(() => {
     resetLogging();
+    resetChatUrlCacheForTests();
+    resetJsonParseWarnThrottlesForTests();
   });
 }

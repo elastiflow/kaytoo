@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { getLogger, logErr } from '../logging/logger.js';
+import { createThrottle } from '../logging/throttle.js';
 import { parseJsonOrNull } from '../util/json.js';
 
 export type ConversationTurn = { role: 'user' | 'assistant'; content: string };
@@ -118,12 +119,10 @@ export function createFileConversationStore(opts: {
 /** Non-persistent in-memory store (single process). */
 export function createMemoryConversationStore(opts: { ttlMs: number }): ConversationStore {
   const map = new Map<string, StoredConversation>();
-  const gc = { nextAtMs: 0 };
+  const shouldPrune = createThrottle(60_000);
   const maybePrune = (): void => {
-    const now = Date.now();
-    if (now < gc.nextAtMs) return;
-    gc.nextAtMs = now + 60_000;
-    const cutoff = now - opts.ttlMs;
+    if (!shouldPrune()) return;
+    const cutoff = Date.now() - opts.ttlMs;
     for (const [k, e] of map) {
       if (!isStoredConversation(e) || e.updatedAtMs < cutoff) map.delete(k);
     }

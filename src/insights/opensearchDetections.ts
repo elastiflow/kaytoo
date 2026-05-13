@@ -1,7 +1,8 @@
 import type { SearchClient } from '../search/types.js';
 import type { Finding } from '../detectors/types.js';
 import { getNumber, getString, isRecord } from '../util/guards.js';
-import { getLogger, logErr } from '../logging/logger.js';
+import { getLogger } from '../logging/logger.js';
+import { parseJsonOrNull } from '../util/json.js';
 
 export type DetectionFetchResult = {
   ok: boolean;
@@ -14,17 +15,7 @@ export type DetectionFetchResult = {
 const ALERT_INDEX_PATTERNS = ['.opensearch-alerting-alerts*', '.opendistro-alerting-alerts*'];
 const AD_RESULT_INDEX_PATTERNS = ['.opensearch-anomaly-results*', '.opendistro-anomaly-results*'];
 
-const parseWarnAt: { nextAtMs: number } = { nextAtMs: 0 };
-function warnParseDegraded(ctx: string, raw: string, err: unknown): void {
-  const now = Date.now();
-  if (now < parseWarnAt.nextAtMs) return;
-  parseWarnAt.nextAtMs = now + 10 * 60_000;
-  const snippet = raw.length > 800 ? `${raw.slice(0, 800)}...` : raw;
-  getLogger({ component: 'insights.opensearchDetections' }).warn(
-    { degradedContext: ctx, degradedSnippet: snippet, ...logErr(err) },
-    'OpenSearch detections parse degraded',
-  );
-}
+const detectionsLog = getLogger({ component: 'insights.opensearchDetections' });
 
 function shardsTotal(body: unknown): number {
   if (!body || typeof body !== 'object') return 0;
@@ -130,14 +121,7 @@ type Hit = { _id?: unknown; _index?: unknown; _source?: unknown };
 function getHits(body: unknown): Hit[] {
   const normalized: unknown =
     typeof body === 'string'
-      ? (() => {
-          try {
-            return JSON.parse(body) as unknown;
-          } catch (e) {
-            warnParseDegraded('opensearch.search.body_string', body, e);
-            return null;
-          }
-        })()
+      ? parseJsonOrNull({ raw: body, context: 'opensearch.search.body_string', log: detectionsLog })
       : body;
   if (!normalized || typeof normalized !== 'object') return [];
   const hitsObj = (normalized as Record<string, unknown>)['hits'];

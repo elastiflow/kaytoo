@@ -1,12 +1,13 @@
-import type { Client } from '@opensearch-project/opensearch';
 import { externalDestinationIpBool } from '../../../opensearch/queries/destinationIp.js';
+import type { SearchClient } from '../../../search/types.js';
 import { getNumber, getString } from '../../../util/guards.js';
-import type { AgentPolicy } from '../../policy.js';
+import { clampBucketSize, type AgentPolicy } from '../../policy.js';
 import { getAggBuckets, getNested } from '../helpers.js';
 import { resolveAggToolContext } from './common.js';
+import { pickAggregatableField } from './pickAggregatableField.js';
 
 export async function topExternalDestinationsByBytes(
-  ctx: { client: Client; policy: AgentPolicy; defaultIndex: string },
+  ctx: { client: SearchClient; policy: AgentPolicy; defaultIndex: string },
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const { index, fields, minutesBack, size } = await resolveAggToolContext({
@@ -16,8 +17,27 @@ export async function topExternalDestinationsByBytes(
     defaultSize: 10,
   });
 
-  const srcPodField = fields.podNameField;
-  const srcNsField = fields.clientNamespaceField;
+  const pick = (field: string | undefined) =>
+    pickAggregatableField({ client: ctx.client, index, field });
+
+  const [podNameAggField, nsAggField, displayNameAggField, dstPortAggField] = await Promise.all([
+    pick(fields.podNameField),
+    pick(fields.clientNamespaceField),
+    pick(fields.srcDisplayNameField),
+    pick(fields.dstPortField),
+  ]);
+  const displayAggField =
+    displayNameAggField && displayNameAggField !== podNameAggField && displayNameAggField !== nsAggField
+      ? displayNameAggField
+      : undefined;
+  const dstPortTermsField = dstPortAggField ?? fields.dstPortField;
+
+  const bySrcLeafAggs: Record<string, unknown> = {
+    sum_bytes: { sum: { field: fields.bytesField } },
+    ...(podNameAggField ? { src_top_pods: { terms: { field: podNameAggField, size: 1 } } } : {}),
+    ...(nsAggField ? { src_top_namespaces: { terms: { field: nsAggField, size: 1 } } } : {}),
+    ...(displayAggField ? { src_top_display_names: { terms: { field: displayAggField, size: 1 } } } : {}),
+  };
 
   const { body } = await ctx.client.search({
     index,
@@ -36,9 +56,17 @@ export async function topExternalDestinationsByBytes(
           terms: { field: fields.dstIpField, size, order: { sum_bytes: 'desc' } },
           aggs: {
             sum_bytes: { sum: { field: fields.bytesField } },
-            ...(fields.dstPortField ? { top_ports: { terms: { field: fields.dstPortField, size: 3 } } } : {}),
-            ...(srcPodField ? { top_src_pods: { terms: { field: srcPodField, size: 3 } } } : {}),
-            ...(srcNsField ? { top_src_namespaces: { terms: { field: srcNsField, size: 3 } } } : {}),
+            top_ports: { terms: { field: dstPortTermsField, size: 3 } },
+            ...(podNameAggField ? { top_src_pods: { terms: { field: podNameAggField, size: 3 } } } : {}),
+            ...(nsAggField ? { top_src_namespaces: { terms: { field: nsAggField, size: 3 } } } : {}),
+            by_src: {
+              terms: {
+                field: fields.srcIpField,
+                size: clampBucketSize(5, ctx.policy),
+                order: { sum_bytes: 'desc' },
+              },
+              aggs: bySrcLeafAggs,
+            },
           },
         },
       },
@@ -65,7 +93,35 @@ export async function topExternalDestinationsByBytes(
         namespace: getString(nb['key']),
         flows: getNumber(nb['doc_count']),
       })),
+      topSources: getAggBuckets(b, ['by_src', 'buckets']).map((sb) => ({
+        srcIp: getString(sb['key']),
+        bytes: getNumber(getNested(sb, ['sum_bytes', 'value'])),
+        flows: getNumber(sb['doc_count']),
+        ...(podNameAggField
+          ? {
+              topPodNames: getAggBuckets(sb, ['src_top_pods', 'buckets']).map((pb) => ({
+                podName: getString(pb['key']),
+                docCount: getNumber(pb['doc_count']),
+              })),
+            }
+          : {}),
+        ...(nsAggField
+          ? {
+              topNamespaces: getAggBuckets(sb, ['src_top_namespaces', 'buckets']).map((nb) => ({
+                namespace: getString(nb['key']),
+                docCount: getNumber(nb['doc_count']),
+              })),
+            }
+          : {}),
+        ...(displayAggField
+          ? {
+              topSrcDisplayNames: getAggBuckets(sb, ['src_top_display_names', 'buckets']).map((db) => ({
+                displayName: getString(db['key']),
+                docCount: getNumber(db['doc_count']),
+              })),
+            }
+          : {}),
+      })),
     })),
   };
 }
-

@@ -153,16 +153,6 @@ if (config.output === 'console') {
       })
     : undefined;
 
-  if (config.mattermost) {
-    startMattermostAdapter({
-      baseUrl: config.mattermost.url,
-      token: config.mattermost.token,
-      channelId: config.mattermost.channelId,
-      ...(config.mattermost.botUserId ? { botUserId: config.mattermost.botUserId } : {}),
-      onEvent,
-    });
-  }
-
   const notifier = createMultiNotifier(
     notifierBundle({ slack: slackNotifier, matrix: matrixNotifier, mattermost: mattermostNotifier }),
   );
@@ -176,8 +166,23 @@ if (config.output === 'console') {
   });
 
   const agent = await createAgentRuntime({ config });
-  const router = new ChatRouter({ notifier, agent, status: async () => 'kaytoo: ok' });
+  const router = new ChatRouter({
+    notifier,
+    agent,
+    status: async () => 'kaytoo: ok',
+    ingestOpenedAtMs: Date.now(),
+  });
   routerCtl.resolve(router);
+
+  if (config.mattermost) {
+    startMattermostAdapter({
+      baseUrl: config.mattermost.url,
+      token: config.mattermost.token,
+      channelId: config.mattermost.channelId,
+      ...(config.mattermost.botUserId ? { botUserId: config.mattermost.botUserId } : {}),
+      onEvent,
+    });
+  }
 
   log.info(
     { slack: Boolean(slackNotifier), matrix: Boolean(matrixNotifier), mattermost: Boolean(mattermostNotifier) },

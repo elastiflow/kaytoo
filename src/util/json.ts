@@ -2,8 +2,23 @@ import type { Logger } from 'pino';
 import { logErr } from '../logging/logger.js';
 import { thrownMessage } from './guards.js';
 
-function snippet(raw: string, n = 800): string {
+const DEFAULT_WARN_EVERY_MS = 10 * 60_000;
+const parseWarnAt = new Map<string, number>();
+
+export function snippet(raw: string, n = 800): string {
   return raw.length > n ? `${raw.slice(0, n)}...` : raw;
+}
+
+/** Test-only: clear the parse-warn throttle state. */
+export function resetJsonParseWarnThrottlesForTests(): void {
+  parseWarnAt.clear();
+}
+
+function warnParseDegraded(log: Logger, context: string, raw: string, err: unknown, everyMs: number): void {
+  const now = Date.now();
+  if (now < (parseWarnAt.get(context) ?? 0)) return;
+  parseWarnAt.set(context, now + everyMs);
+  log.warn({ degradedContext: context, degradedSnippet: snippet(raw), ...logErr(err) }, 'JSON parse degraded');
 }
 
 export function parseJsonOrNull(opts: {
@@ -15,21 +30,25 @@ export function parseJsonOrNull(opts: {
   try {
     return JSON.parse(opts.raw) as unknown;
   } catch (e) {
-    if (opts.log) {
-      const warnEveryMs = opts.warnEveryMs ?? 10 * 60_000;
-      const l = opts.log as Logger & { __kaytooNextJsonWarnAtMs?: number };
-      const now = Date.now();
-      const nextAt = l.__kaytooNextJsonWarnAtMs ?? 0;
-      if (now >= nextAt) {
-        l.__kaytooNextJsonWarnAtMs = now + warnEveryMs;
-        opts.log.warn(
-          { degradedContext: opts.context, degradedSnippet: snippet(opts.raw), ...logErr(e) },
-          'JSON parse degraded',
-        );
-      }
-    }
+    if (opts.log) warnParseDegraded(opts.log, opts.context, opts.raw, e, opts.warnEveryMs ?? DEFAULT_WARN_EVERY_MS);
     return null;
   }
+}
+
+/** Lenient variant: strips fences, unwraps once-encoded strings, extracts the first JSON substring. */
+export function parseLenientOrNull(opts: {
+  raw: string;
+  context: string;
+  log?: Logger;
+  warnEveryMs?: number;
+}): unknown | null {
+  const v = parseLenientTopLevelJson(opts.raw);
+  if (v !== null) return v;
+  if (opts.log) {
+    const err = new Error('unparseable JSON');
+    warnParseDegraded(opts.log, opts.context, opts.raw, err, opts.warnEveryMs ?? DEFAULT_WARN_EVERY_MS);
+  }
+  return null;
 }
 
 export function parseJsonOrThrow(opts: { raw: string; context: string }): unknown {
