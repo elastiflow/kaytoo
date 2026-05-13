@@ -76,7 +76,7 @@ export const coreToolSpecs: readonly CoreToolSpec[] = [
   {
     name: 'topTalkersByBytes',
     description:
-      'Top source IPs by bytes; includes top pod names / namespaces when mapped; includeDistinctPods adds approximate distinct pod-name cardinality.',
+      'Top sources by bytes. topSrcDisplayNames when srcDisplayNameField aggregates and differs from pod/namespace terms aggs; topPodNames/topNamespaces; includeDistinctPods for pod cardinality.',
     argsSchema: {
       type: 'object',
       properties: {
