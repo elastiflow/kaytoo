@@ -15,7 +15,7 @@ describe('egressInsightCopy', () => {
     expect(buildEgressVolumeSummary(100, 50, 2)).toContain('2.0x');
   });
 
-  it('buildEgressVolumeSummary labels non-finite ratio distinctly', () => {
+  it('buildEgressVolumeSummary non-finite ratio', () => {
     expect(buildEgressVolumeSummary(100, 50, Number.POSITIVE_INFINITY)).toContain('(highx)');
     expect(buildEgressVolumeSummary(100, 50, Number.NaN)).toContain('(n/ax)');
   });

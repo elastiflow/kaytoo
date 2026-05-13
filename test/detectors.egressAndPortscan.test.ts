@@ -179,7 +179,7 @@ describe('egress and portscan detectors', () => {
     expect(findings[0]!.title).toMatch(/IPv6 \/64/);
   });
 
-  it('includes display name in IPv6 /64 title when present', () => {
+  it('IPv6 /64 title includes display name when set', () => {
     const findings = detectEgressAnomalies({
       window: { from: '2026-01-01T00:00:00.000Z', to: '2026-01-01T00:15:00.000Z' },
       current: [{ srcIp: '2001:db8::1', bytes: 60_000_000, srcDisplayName: 'pod-a' }],

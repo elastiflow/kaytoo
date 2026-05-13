@@ -64,7 +64,7 @@ describe('selectNovelInsightPostBatch', () => {
     expect(batch.map((f) => f.id)).toEqual(['a', 'b', 'd']);
   });
 
-  it('keeps egress primary and spike as separate ids for the same host', () => {
+  it('egress primary and spike stay separate batch entries for one host', () => {
     const dedupe = { has: () => false };
     const key = 'v6-64:2001:0db8:0000:0000';
     const findings: Finding[] = [
