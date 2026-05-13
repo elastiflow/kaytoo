@@ -46,6 +46,8 @@ export async function topTalkersByBytes(
     pickAggField(fields.clientNamespaceField),
     pickAggField(fields.srcDisplayNameField),
   ]);
+  const displayAggField =
+    displayNameAggField && displayNameAggField !== podNameAggField ? displayNameAggField : undefined;
 
   const bySrcAggs: Record<string, unknown> = {
     sum_bytes: { sum: { field: fields.bytesField } },
@@ -59,8 +61,8 @@ export async function topTalkersByBytes(
   if (nsAggField) {
     bySrcAggs.top_namespaces = { terms: { field: nsAggField, size: 3 } };
   }
-  if (displayNameAggField && displayNameAggField !== podNameAggField) {
-    bySrcAggs.top_display_names = { terms: { field: displayNameAggField, size: 3 } };
+  if (displayAggField) {
+    bySrcAggs.top_display_names = { terms: { field: displayAggField, size: 3 } };
   }
 
   const { body } = await ctx.client.search({
@@ -110,7 +112,7 @@ export async function topTalkersByBytes(
           docCount: getNumber(nb['doc_count']),
         }));
       }
-      if (displayNameAggField && displayNameAggField !== podNameAggField) {
+      if (displayAggField) {
         row.topSrcDisplayNames = getAggBuckets(b, ['top_display_names', 'buckets']).map((db) => ({
           displayName: getString(db['key']),
           docCount: getNumber(db['doc_count']),

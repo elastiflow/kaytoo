@@ -8,29 +8,27 @@ vi.mock('../src/opensearch/fieldCaps.js', async (importActual) => {
   return { ...actual, chooseFields: vi.fn() };
 });
 
+const index = 'elastiflow-flow-codex-*';
+const baseFields = {
+  bytesField: 'flow.bytes',
+  srcIpField: 'source.ip',
+  dstIpField: 'dest.ip',
+  srcPortField: 'source.port',
+  dstPortField: 'dest.port',
+};
+
 describe('topTalkersByBytes', () => {
   beforeEach(() => {
-    vi.mocked(fieldCaps.chooseFields).mockResolvedValue({
-      bytesField: 'flow.bytes',
-      srcIpField: 'source.ip',
-      dstIpField: 'dest.ip',
-      srcPortField: 'source.port',
-      dstPortField: 'dest.port',
-      srcDisplayNameField: 'host.name',
-    });
+    vi.mocked(fieldCaps.chooseFields).mockResolvedValue({ ...baseFields, srcDisplayNameField: 'host.name' });
   });
 
-  it('adds top_display_names agg and topSrcDisplayNames on rows when display field is aggregatable', async () => {
-    const fieldCapsResp = (fields: string[]) => ({
-      body: {
-        fields: Object.fromEntries(
-          fields.map((f) => [f, { keyword: { aggregatable: true } }]),
-        ),
-      },
+  it('adds top_display_names and topSrcDisplayNames when display field aggregates', async () => {
+    const capsFromFields = (fields: string[]) => ({
+      body: { fields: Object.fromEntries(fields.map((f) => [f, { keyword: { aggregatable: true } }])) },
     });
     const client = {
       fieldCaps: vi.fn().mockImplementation((opts: { fields?: string[] }) =>
-        Promise.resolve(fieldCapsResp(opts.fields ?? [])),
+        Promise.resolve(capsFromFields(opts.fields ?? [])),
       ),
       search: vi.fn().mockResolvedValue({
         body: {
@@ -41,9 +39,7 @@ describe('topTalkersByBytes', () => {
                   key: '192.168.1.1',
                   doc_count: 10,
                   sum_bytes: { value: 900 },
-                  top_display_names: {
-                    buckets: [{ key: 'workstation.local', doc_count: 9 }],
-                  },
+                  top_display_names: { buckets: [{ key: 'workstation.local', doc_count: 9 }] },
                 },
               ],
             },
@@ -52,35 +48,34 @@ describe('topTalkersByBytes', () => {
       }),
     };
 
-    const out = (await topTalkersByBytes(
-      { client: client as never, policy: defaultAgentPolicy, defaultIndex: 'elastiflow-flow-codex-*' },
-      {},
-    )) as {
+    const out = (await topTalkersByBytes({ client: client as never, policy: defaultAgentPolicy, defaultIndex: index }, {})) as {
       talkers: Array<{ srcIp: string; topSrcDisplayNames?: { displayName: string; docCount: number }[] }>;
     };
 
-    const searchBody = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: unknown } } } };
-    expect(searchBody.body?.aggs?.by_src?.aggs).toMatchObject({
+    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: unknown } } } };
+    expect(body.body?.aggs?.by_src?.aggs).toMatchObject({
       top_display_names: { terms: { field: 'host.name', size: 3 } },
     });
     expect(out.talkers[0]?.srcIp).toBe('192.168.1.1');
     expect(out.talkers[0]?.topSrcDisplayNames).toEqual([{ displayName: 'workstation.local', docCount: 9 }]);
   });
 
-  it('omits top_display_names when it would duplicate the pod terms field', async () => {
+  it('skips top_display_names when same field as pod terms', async () => {
     vi.mocked(fieldCaps.chooseFields).mockResolvedValue({
-      bytesField: 'flow.bytes',
-      srcIpField: 'source.ip',
-      dstIpField: 'dest.ip',
-      srcPortField: 'source.port',
-      dstPortField: 'dest.port',
+      ...baseFields,
       podNameField: 'k8s.pod',
       srcDisplayNameField: 'k8s.pod',
     });
+    const podCaps = {
+      body: {
+        fields: {
+          'k8s.pod': { keyword: { aggregatable: true } },
+          'k8s.pod.keyword': { keyword: { aggregatable: true } },
+        },
+      },
+    };
     const client = {
-      fieldCaps: vi.fn().mockResolvedValue({
-        body: { fields: { 'k8s.pod': { keyword: { aggregatable: true } }, 'k8s.pod.keyword': { keyword: { aggregatable: true } } } },
-      }),
+      fieldCaps: vi.fn().mockResolvedValue(podCaps),
       search: vi.fn().mockResolvedValue({
         body: {
           aggregations: {
@@ -99,12 +94,9 @@ describe('topTalkersByBytes', () => {
       }),
     };
 
-    await topTalkersByBytes(
-      { client: client as never, policy: defaultAgentPolicy, defaultIndex: 'elastiflow-flow-codex-*' },
-      {},
-    );
+    await topTalkersByBytes({ client: client as never, policy: defaultAgentPolicy, defaultIndex: index }, {});
 
-    const searchBody = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
-    expect(searchBody.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
+    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
+    expect(body.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
   });
 });
