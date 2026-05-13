@@ -1,3 +1,13 @@
+## [v0.6.0] - 2026-05-13
+
+### Features
+
+- **insights:** Egress enrichment, dual windows, field caps (#23)
+
+[v0.5.0..v0.6.0](https://github.com/elastiflow/kaytoo/compare/v0.5.0...v0.6.0)
+
+
+
 ## [v0.5.0] - 2026-05-12
 
 ### Features
