@@ -1,4 +1,5 @@
-import { getLogger, logErr, withDurationMs } from '../logging/logger.js';
+import type { Logger } from 'pino';
+import { logErr, withDurationMs } from '../logging/logger.js';
 import { isRecord } from '../util/guards.js';
 import { parseLenientTopLevelJson } from '../util/json.js';
 import type { ChatMessage, LlmClient } from '../llm/types.js';
@@ -12,7 +13,7 @@ export async function runAgentLoop(opts: {
   llm: LlmClient;
   tools: ToolRegistry;
   turns: ConversationTurn[];
-  log: ReturnType<typeof getLogger>;
+  log: Logger;
   summary?: string;
 }): Promise<string> {
   const lastUser = [...opts.turns].reverse().find((t) => t.role === 'user')?.content ?? '';
@@ -119,7 +120,7 @@ async function repairInvalidToolCalls(opts: { llm: LlmClient; messages: ChatMess
   return content.trim();
 }
 
-function normalizeToolCalls(v: unknown, log: ReturnType<typeof getLogger>, context: string): unknown[] | null {
+function normalizeToolCalls(v: unknown, log: Logger, context: string): unknown[] | null {
   if (Array.isArray(v)) return v;
   if (typeof v !== 'string') return null;
   const parsed = safeJsonParse({ raw: v, log, context });
@@ -128,7 +129,7 @@ function normalizeToolCalls(v: unknown, log: ReturnType<typeof getLogger>, conte
   return null;
 }
 
-function extractToolCallsFromText(raw: string, log: ReturnType<typeof getLogger>, context: string): unknown[] | null {
+function extractToolCallsFromText(raw: string, log: Logger, context: string): unknown[] | null {
   const parsed = safeJsonParse({ raw, log, context });
   if (isRecord(parsed) && Array.isArray(parsed['tool_calls'])) return parsed['tool_calls'] as unknown[];
   return null;
@@ -150,7 +151,7 @@ function compressToMaxLines(text: string, maxLines: number): string {
 }
 
 const jsonParseWarnAt: { nextAtMs: number } = { nextAtMs: 0 };
-function warnJsonParseDegraded(opts: { log: ReturnType<typeof getLogger>; context: string; raw: string; err: unknown }): void {
+function warnJsonParseDegraded(opts: { log: Logger; context: string; raw: string; err: unknown }): void {
   const now = Date.now();
   if (now < jsonParseWarnAt.nextAtMs) return;
   jsonParseWarnAt.nextAtMs = now + 10 * 60_000;
@@ -165,7 +166,7 @@ function warnJsonParseDegraded(opts: { log: ReturnType<typeof getLogger>; contex
   );
 }
 
-function safeJsonParse(opts: { raw: string; log: ReturnType<typeof getLogger>; context: string }): unknown {
+function safeJsonParse(opts: { raw: string; log: Logger; context: string }): unknown {
   const v = parseLenientTopLevelJson(opts.raw);
   if (v !== null) return v;
   warnJsonParseDegraded({ log: opts.log, context: opts.context, raw: opts.raw, err: new Error('unparseable JSON') });
@@ -175,7 +176,7 @@ function safeJsonParse(opts: { raw: string; log: ReturnType<typeof getLogger>; c
 async function runToolCalls(opts: {
   tools: ToolRegistry;
   toolCalls: unknown[];
-  log: ReturnType<typeof getLogger>;
+  log: Logger;
 }): Promise<ToolResult[]> {
   const picked = opts.toolCalls
     .map((c): { name: string; args: Record<string, unknown> } | null => {
