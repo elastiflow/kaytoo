@@ -3,7 +3,7 @@ import type { KaytooConfig } from '../config.js';
 import type { Finding } from '../detectors/types.js';
 import { getLogger, withDurationMs } from '../logging/logger.js';
 import { isRecord } from '../util/guards.js';
-import { parseLenientTopLevelJson } from '../util/json.js';
+import { parseLenientOrNull } from '../util/json.js';
 import { sleepMs } from '../util/sleep.js';
 import { buildSlackSummaryPrompt } from './prompt.js';
 import type { ChatMessage, LlmClient } from './types.js';
@@ -45,11 +45,27 @@ async function resolveChatUrl(baseUrl: string, apiKey: string, log: PinoLogger):
   return `${baseUrl}/v1/chat/completions`;
 }
 
+const chatUrlCache = new Map<string, Promise<string>>();
+
+/** Test-only: clear the resolved-chat-URL cache so probing tests stay independent. */
+export function resetChatUrlCacheForTests(): void {
+  chatUrlCache.clear();
+}
+
+function getChatUrl(baseUrl: string, apiKey: string, log: PinoLogger): Promise<string> {
+  const key = `${baseUrl}|${apiKey}`;
+  const cached = chatUrlCache.get(key);
+  if (cached) return cached;
+  const p = resolveChatUrl(baseUrl, apiKey, log);
+  chatUrlCache.set(key, p);
+  return p;
+}
+
 export function createOpenAiCompatClient(config: OpenAiCompatConfig): LlmClient {
   const log = getLogger({ component: 'llm' });
   const baseUrl = config.baseUrl.replace(/\/+$/, '');
   const includeBodies = config.includeDebugBodies ?? false;
-  const chatUrlPromise = resolveChatUrl(baseUrl, config.apiKey, log);
+  const chatUrlPromise = getChatUrl(baseUrl, config.apiKey, log);
 
   return {
     async chatCompletions(input: { messages: ChatMessage[]; temperature?: number; maxTokens?: number }) {
@@ -104,15 +120,8 @@ export function createOpenAiCompatClient(config: OpenAiCompatConfig): LlmClient 
 
       const { content } = await this.chatCompletions({ messages, temperature: 0.2 });
 
-      const parsed = parseLenientTopLevelJson(content);
-      if (parsed === null) {
-        const snippet = content.length > 800 ? `${content.slice(0, 800)}...` : content;
-        getLogger({ component: 'llm' }).warn(
-          { degradedContext: 'llm.slack_summary_parse', degradedSnippet: snippet },
-          'LLM JSON parse degraded',
-        );
-        throw new Error(`LLM returned non-JSON content:\n${content}`);
-      }
+      const parsed = parseLenientOrNull({ raw: content, context: 'llm.slack_summary_parse', log });
+      if (parsed === null) throw new Error(`LLM returned non-JSON content:\n${content}`);
       if (!isRecord(parsed)) throw new Error('LLM JSON missing object');
       const postRaw = parsed['post'];
       if (typeof postRaw !== 'boolean') throw new Error('LLM JSON missing boolean "post"');

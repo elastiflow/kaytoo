@@ -7,7 +7,7 @@ import {
   type Room,
   RoomEvent,
 } from 'matrix-js-sdk';
-import { getLogger } from '../../logging/logger.js';
+import { getLogger, logErr } from '../../logging/logger.js';
 import { createMatrixJsSdkLogger, type MatrixSdkLevel } from '../../logging/matrixSdkLogger.js';
 import type { ChatEvent } from '../types.js';
 
@@ -79,7 +79,6 @@ export async function startMatrixAdapter(opts: {
     const roomId = room?.roomId ?? event.getRoomId();
     if (!roomId) return;
     const eventId = event.getId() ?? '';
-    /** Thread root for MSC threads; `main` sentinel for main-timeline (memory + non-threaded replies). */
     const threadKey = event.threadRootId ?? 'main';
     const normalized: ChatEvent = {
       type: 'message',
@@ -91,7 +90,7 @@ export async function startMatrixAdapter(opts: {
       },
       user: { id: sender },
       text: body,
-      ts: new Date().toISOString(),
+      ts: new Date(event.getTs()).toISOString(),
       ...(eventId ? { eventId } : {}),
     };
     await opts.onEvent(normalized);
@@ -103,7 +102,7 @@ export async function startMatrixAdapter(opts: {
       await client.joinRoom(room.roomId);
       log.info({ roomId: room.roomId }, 'matrix joined invited room');
     } catch (e) {
-      log.warn({ roomId: room.roomId, err: e }, 'matrix failed to join invited room');
+      log.warn({ roomId: room.roomId, ...logErr(e) }, 'matrix failed to join invited room');
     }
   };
 
@@ -118,7 +117,7 @@ export async function startMatrixAdapter(opts: {
       log.info({ roomId: opts.defaultRoomId }, 'matrix joined default room');
     } catch (e) {
       log.error(
-        { roomId: opts.defaultRoomId, botUserId: client.getUserId() ?? undefined, err: e },
+        { roomId: opts.defaultRoomId, botUserId: client.getUserId() ?? undefined, ...logErr(e) },
         'matrix cannot join default room; invite the bot user, then restart',
       );
     }

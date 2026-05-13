@@ -81,6 +81,7 @@ function flowPlaybooksCompressed(): string[] {
     '',
     'Examples (not exhaustive):',
     '- topTalkersByBytes: prefer topSrcDisplayNames in prose when set; includeDistinctPods only for pod cardinality.',
+    '- topExternalDestinationsByBytes: for who egresses to a given external IP, use topSources; prefer topSrcDisplayNames per source when set, else srcIp.',
     '- namespaceTrafficMatrix: compare internal vs external bytes by namespace.',
     '- egressBytesVsBaseline vs egressSpikeDrilldown: table-only baseline vs per-source top destinations ' +
       'in one call.',

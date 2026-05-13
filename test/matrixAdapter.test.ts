@@ -43,6 +43,7 @@ function mkEvent(over: Partial<{
   id: string;
   roomId: string;
   threadRootId: string | undefined;
+  ts: number;
 }>): MatrixEvent {
   const o = {
     status: null,
@@ -53,6 +54,7 @@ function mkEvent(over: Partial<{
     id: '$1',
     roomId: '!r:hs',
     threadRootId: undefined as string | undefined,
+    ts: 1_700_000_000_000,
     ...over,
   };
   return {
@@ -62,6 +64,7 @@ function mkEvent(over: Partial<{
     getSender: () => o.sender,
     getId: () => o.id,
     getRoomId: () => o.roomId,
+    getTs: () => o.ts,
     threadRootId: o.threadRootId,
   } as MatrixEvent;
 }
@@ -133,13 +136,14 @@ describe('startMatrixAdapter', () => {
       onEvent,
     });
     const h = timelineHandlers[0]!;
-    await h(mkEvent({ body: 'ping', sender: '@peer:hs', id: '$e1' }), mkRoom('!room:hs'), false);
+    await h(mkEvent({ body: 'ping', sender: '@peer:hs', id: '$e1', ts: 1_720_000_000_000 }), mkRoom('!room:hs'), false);
     expect(onEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: 'matrix',
         text: 'ping',
         address: expect.objectContaining({ channelId: '!room:hs', threadId: 'main' }),
         eventId: '$e1',
+        ts: new Date(1_720_000_000_000).toISOString(),
       }),
     );
     await stop();

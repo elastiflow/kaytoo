@@ -194,7 +194,8 @@ export const coreToolSpecs: readonly CoreToolSpec[] = [
   },
   {
     name: 'topExternalDestinationsByBytes',
-    description: 'Top external destination IPs by egress bytes (RFC1918/CGNAT excluded) with top source pods/namespaces.',
+    description:
+      'Top external destination IPs by egress bytes (non-RFC1918/CGNAT). Per dst: topSources (srcIp, bytes, optional pod/ns/display from index), plus dst-level topSourcePods/topSourceNamespaces.',
     argsSchema: {
       type: 'object',
       properties: {

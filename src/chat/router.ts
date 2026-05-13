@@ -2,14 +2,18 @@ import type { Notifier } from '../notify/notifier.js';
 import type { AgentRuntime } from '../agent/runtime.js';
 import { runWithLogContextAsync } from '../logging/context.js';
 import { getLogger, logErr } from '../logging/logger.js';
+import { chatMessageServerTimeMs } from '../util/chatMessageServerTimeMs.js';
 import type { ChatEvent, ChatPost } from './types.js';
 
 const log = getLogger({ component: 'chat.router' });
+
+const INGEST_SKEW_MS = 5_000;
 
 export type ChatRouterDeps = {
   notifier: Notifier;
   agent: AgentRuntime;
   status: () => Promise<string>;
+  ingestOpenedAtMs?: number;
 };
 
 export class ChatRouter {
@@ -20,6 +24,15 @@ export class ChatRouter {
 
     const trimmed = evt.text.trim();
     if (!trimmed) return;
+
+    const opened = this.deps.ingestOpenedAtMs;
+    if (opened !== undefined) {
+      const t = chatMessageServerTimeMs(evt.ts);
+      if (t !== null && t < opened - INGEST_SKEW_MS) {
+        log.debug({ platform: evt.platform, t, opened }, 'ingest skip stale');
+        return;
+      }
+    }
 
     return runWithLogContextAsync(
       {
@@ -49,7 +62,7 @@ export class ChatRouter {
 
           await this.deps.notifier.post(this.replyTo(evt, resp.text));
         } catch (e) {
-          log.error(e instanceof Error ? { err: e } : { ...logErr(e) }, 'handleEvent failed');
+          log.error(logErr(e), 'handleEvent failed');
         }
       },
     );

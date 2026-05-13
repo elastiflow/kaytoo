@@ -1,14 +1,18 @@
 import type { Logger } from 'pino';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   extractFirstJsonSubstring,
   parseJsonOrNull,
   parseJsonOrThrow,
   parseLenientTopLevelJson,
+  resetJsonParseWarnThrottlesForTests,
   stripMarkdownCodeFences,
 } from '../src/util/json.js';
 
 describe('json util', () => {
+  beforeEach(() => resetJsonParseWarnThrottlesForTests());
+  afterEach(() => resetJsonParseWarnThrottlesForTests());
+
   it('parseJsonOrThrow / parseJsonOrNull', () => {
     expect(parseJsonOrNull({ raw: '[1]', context: 'c' })).toEqual([1]);
     expect(parseJsonOrNull({ raw: '{', context: 'no-log' })).toBeNull();
@@ -17,14 +21,16 @@ describe('json util', () => {
   });
 
   it('parseJsonOrNull warn rate limit', () => {
+    vi.useFakeTimers();
     const warn = vi.fn();
     const log = { warn } as unknown as Logger;
     parseJsonOrNull({ raw: '{', context: 'x', log, warnEveryMs: 60_000 });
     parseJsonOrNull({ raw: '{', context: 'x', log, warnEveryMs: 60_000 });
     expect(warn).toHaveBeenCalledTimes(1);
-    (log as Logger & { __kaytooNextJsonWarnAtMs?: number }).__kaytooNextJsonWarnAtMs = 0;
+    vi.advanceTimersByTime(60_001);
     parseJsonOrNull({ raw: '{', context: 'x', log, warnEveryMs: 60_000 });
     expect(warn).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it('stripMarkdownCodeFences', () => {
