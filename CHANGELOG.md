@@ -1,3 +1,13 @@
+## [v0.7.0] - 2026-05-13
+
+### Features
+
+- **agent:** Egress topSources, chat ingest guard, JSON parsing (#28)
+
+[v0.6.1..v0.7.0](https://github.com/elastiflow/kaytoo/compare/v0.6.1...v0.7.0)
+
+
+
 ## [v0.6.1] - 2026-05-13
 
 ### Bug Fixes
