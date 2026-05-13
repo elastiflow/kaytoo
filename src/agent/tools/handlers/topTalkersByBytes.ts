@@ -47,7 +47,11 @@ export async function topTalkersByBytes(
     pickAggField(fields.srcDisplayNameField),
   ]);
   const displayAggField =
-    displayNameAggField && displayNameAggField !== podNameAggField ? displayNameAggField : undefined;
+    displayNameAggField &&
+    displayNameAggField !== podNameAggField &&
+    displayNameAggField !== nsAggField
+      ? displayNameAggField
+      : undefined;
 
   const bySrcAggs: Record<string, unknown> = {
     sum_bytes: { sum: { field: fields.bytesField } },

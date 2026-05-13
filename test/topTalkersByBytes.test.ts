@@ -99,4 +99,70 @@ describe('topTalkersByBytes', () => {
     const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
     expect(body.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
   });
+
+  it('omits display agg when field caps mark srcDisplayNameField non-aggregatable', async () => {
+    const client = {
+      fieldCaps: vi.fn().mockResolvedValue({
+        body: { fields: { 'host.name': { keyword: { aggregatable: false } } } },
+      }),
+      search: vi.fn().mockResolvedValue({
+        body: {
+          aggregations: {
+            by_src: {
+              buckets: [{ key: '192.168.1.2', doc_count: 5, sum_bytes: { value: 50 } }],
+            },
+          },
+        },
+      }),
+    };
+
+    const out = (await topTalkersByBytes({ client: client as never, policy: defaultAgentPolicy, defaultIndex: index }, {})) as {
+      talkers: Array<Record<string, unknown>>;
+    };
+
+    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
+    expect(body.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
+    expect(out.talkers[0]).not.toHaveProperty('topSrcDisplayNames');
+  });
+
+  it('skips top_display_names when display terms field matches namespace terms field', async () => {
+    vi.mocked(fieldCaps.chooseFields).mockResolvedValue({
+      ...baseFields,
+      clientNamespaceField: 'k8s.ns',
+      srcDisplayNameField: 'k8s.ns',
+    });
+    const caps = {
+      body: {
+        fields: {
+          'k8s.ns': { keyword: { aggregatable: true } },
+          'k8s.ns.keyword': { keyword: { aggregatable: true } },
+        },
+      },
+    };
+    const client = {
+      fieldCaps: vi.fn().mockResolvedValue(caps),
+      search: vi.fn().mockResolvedValue({
+        body: {
+          aggregations: {
+            by_src: {
+              buckets: [
+                {
+                  key: '10.0.0.2',
+                  doc_count: 2,
+                  sum_bytes: { value: 20 },
+                  top_namespaces: { buckets: [{ key: 'default', doc_count: 2 }] },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    };
+
+    await topTalkersByBytes({ client: client as never, policy: defaultAgentPolicy, defaultIndex: index }, {});
+
+    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
+    expect(body.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
+    expect(body.body?.aggs?.by_src?.aggs?.top_namespaces).toMatchObject({ terms: { field: 'k8s.ns', size: 3 } });
+  });
 });
