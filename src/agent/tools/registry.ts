@@ -1,4 +1,3 @@
-/** Builds the tool registry and shared OpenSearch client + field mapping context for handlers. */
 import type { KaytooConfig } from '../../config.js';
 import { getLogger } from '../../logging/logger.js';
 import { probeOpenSearchMcpServer } from '../../opensearch/mcpClient.js';
@@ -9,35 +8,7 @@ import { mcpJsonRpcCall } from '../mcpJsonRpc.js';
 import { thrownMessage } from '../../util/guards.js';
 import { isAgentToolAllowed, type AgentPolicy } from '../policy.js';
 import { buildToolDefinitionList } from './definitions.js';
-import { chattyWorkloads } from './handlers/chattyWorkloads.js';
-import { crossNodeBytesByNode } from './handlers/crossNodeBytesByNode.js';
-import { destinationTrafficDropsVsBaseline } from './handlers/destinationTrafficDropsVsBaseline.js';
-import { namespaceEdgesByBytes } from './handlers/namespaceEdgesByBytes.js';
-import { egressBytesVsBaselineTool } from './handlers/egressBytesVsBaseline.js';
-import { egressSpikeDrilldownTool } from './handlers/egressSpikeDrilldown.js';
-import { ddosCandidates } from './handlers/ddosCandidates.js';
-import { flowAggregateTool } from './handlers/flowAggregate.js';
-import { ipVersionProtocolRollup } from './handlers/ipVersionProtocolRollup.js';
-import { longLivedFlows } from './handlers/longLivedFlows.js';
-import { unexpectedPortsVsBaseline } from './handlers/unexpectedPortsVsBaseline.js';
-import { topRfc1918OutsideClusterByBytes } from './handlers/topRfc1918OutsideClusterByBytes.js';
-import { namespaceTrafficMatrixTool } from './handlers/namespaceTrafficMatrix.js';
-import { portscanCandidatesTool } from './handlers/portscanCandidates.js';
-import { protocolNamespaceRollupTool } from './handlers/protocolNamespaceRollup.js';
-import { rareExternalDestinations } from './handlers/rareExternalDestinations.js';
-import { searchFlows } from './handlers/searchFlows.js';
-import { tcpFlagPatternsByWorkload } from './handlers/tcpFlagPatternsByWorkload.js';
-import { topConversations5Tuple } from './handlers/topConversations5Tuple.js';
-import { topDestinationWorkloadsByBytes } from './handlers/topDestinationWorkloadsByBytes.js';
-import { topDstIpPortByDistinctSources } from './handlers/topDstIpPortByDistinctSources.js';
-import { topExternalDestinationsByBytes } from './handlers/topExternalDestinationsByBytes.js';
-import { topFanOut } from './handlers/topFanOut.js';
-import { topPortsByBytesAndFlows } from './handlers/topPortsByBytesAndFlows.js';
-import { topDestinationsForSource } from './handlers/topDestinationsForSource.js';
-import { topServiceFanIn } from './handlers/topServiceFanIn.js';
-import { topServiceFanInVsBaseline } from './handlers/topServiceFanInVsBaseline.js';
-import { topSourceWorkloadsByBytesPackets } from './handlers/topSourceWorkloadsByBytesPackets.js';
-import { topTalkersByBytes } from './handlers/topTalkersByBytes.js';
+import { coreToolSpecs } from './toolSpecs.js';
 import { isRecordArgs } from './helpers.js';
 import type { ToolCall, ToolRegistry, ToolResult } from './types.js';
 
@@ -80,112 +51,19 @@ export async function createToolRegistry(opts: {
   const defaultIndex = opts.config.search.indexPattern;
   const ctxPlain = { client, policy: opts.policy, defaultIndex };
   const ctxFields = { ...ctxPlain, fields };
+  const ctxBundle = {
+    ctxPlain,
+    ctxFields,
+    ctxThresholds: { ...ctxFields, thresholds: opts.config.thresholds },
+  };
 
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<ToolHandlerResult>>();
 
-  handlers.set('searchFlows', (args) =>
-    searchFlows(ctxFields, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topDestinationsForSource', (args) =>
-    topDestinationsForSource(ctxFields, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topTalkersByBytes', (args) =>
-    topTalkersByBytes(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topServiceFanIn', (args) =>
-    topServiceFanIn(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topServiceFanInVsBaseline', (args) =>
-    topServiceFanInVsBaseline(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topSourceWorkloadsByBytesPackets', (args) =>
-    topSourceWorkloadsByBytesPackets(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topDestinationWorkloadsByBytes', (args) =>
-    topDestinationWorkloadsByBytes(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topConversations5Tuple', (args) =>
-    topConversations5Tuple(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topFanOut', (args) => topFanOut(ctxPlain, args).then((result) => ({ ok: true as const, result })));
-  handlers.set('topDstIpPortByDistinctSources', (args) =>
-    topDstIpPortByDistinctSources(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topExternalDestinationsByBytes', (args) =>
-    topExternalDestinationsByBytes(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('destinationTrafficDropsVsBaseline', (args) =>
-    destinationTrafficDropsVsBaseline(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topRfc1918OutsideClusterByBytes', (args) =>
-    topRfc1918OutsideClusterByBytes(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('topPortsByBytesAndFlows', (args) =>
-    topPortsByBytesAndFlows(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('ddosCandidates', (args) =>
-    ddosCandidates(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('namespaceEdgesByBytes', (args) =>
-    namespaceEdgesByBytes(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('unexpectedPortsVsBaseline', (args) =>
-    unexpectedPortsVsBaseline(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('longLivedFlows', (args) =>
-    longLivedFlows(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('chattyWorkloads', (args) =>
-    chattyWorkloads(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('crossNodeBytesByNode', (args) =>
-    crossNodeBytesByNode(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('ipVersionProtocolRollup', (args) =>
-    ipVersionProtocolRollup(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('tcpFlagPatternsByWorkload', (args) =>
-    tcpFlagPatternsByWorkload(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('rareExternalDestinations', (args) =>
-    rareExternalDestinations(ctxFields, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('portscanCandidates', (args) =>
-    portscanCandidatesTool(
-      {
-        ...ctxFields,
-        thresholds: opts.config.thresholds,
-      },
-      args,
-    ).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('egressBytesVsBaseline', (args) =>
-    egressBytesVsBaselineTool(
-      {
-        ...ctxFields,
-        thresholds: opts.config.thresholds,
-      },
-      args,
-    ).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('egressSpikeDrilldown', (args) =>
-    egressSpikeDrilldownTool(
-      {
-        ...ctxFields,
-        thresholds: opts.config.thresholds,
-      },
-      args,
-    ).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('namespaceTrafficMatrix', (args) =>
-    namespaceTrafficMatrixTool(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('protocolNamespaceRollup', (args) =>
-    protocolNamespaceRollupTool(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
-  handlers.set('flowAggregate', (args) =>
-    flowAggregateTool(ctxPlain, args).then((result) => ({ ok: true as const, result })),
-  );
+  for (const spec of coreToolSpecs) {
+    handlers.set(spec.name, (args) =>
+      spec.bind(ctxBundle)(args).then((result) => ({ ok: true as const, result })),
+    );
+  }
 
   handlers.set('kbSearch', async (args) => {
     if (!kbDir || !kbReady) return { ok: false as const, result: { error: 'kbSearch not configured' } };
