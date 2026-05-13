@@ -120,6 +120,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
         const spikeCurrentWindow = windowRelative({ to: now, minutesBack: spike.currentMinutes });
         const portscanWindow = windowRelative({ to: now, minutesBack: portscanMinutes });
 
+        // Three queryTopEgressBySource calls: primary window, spike window, shared baseline.
         const [primaryCurrentEgress, spikeCurrentEgress, baselineEgress, portscanRows] = await Promise.all([
           queryTopEgressBySource({
             client,
@@ -222,6 +223,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     try {
       await opts.insightSink.postInsight(text);
     } catch {
+      // Notifier logged the error; omit dedupe.mark so this batch can retry next poll.
       log.warn({ findingCount: toPost.length, output: config.output }, 'post findings failed');
       return;
     }
