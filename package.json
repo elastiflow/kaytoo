@@ -67,7 +67,7 @@
     "html-to-text": "^10.0.0",
     "isomorphic-dompurify": "^3.12.0",
     "marked": "^18.0.3",
-    "matrix-js-sdk": "^38.4.0",
+    "matrix-js-sdk": "^41.5.0",
     "pino": "^10.3.1",
     "zod": "^4.3.6"
   }
