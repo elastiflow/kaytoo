@@ -60,9 +60,8 @@ export async function createToolRegistry(opts: {
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<ToolHandlerResult>>();
 
   for (const spec of coreToolSpecs) {
-    handlers.set(spec.name, (args) =>
-      spec.bind(ctxBundle)(args).then((result) => ({ ok: true as const, result })),
-    );
+    const run = spec.bind(ctxBundle);
+    handlers.set(spec.name, (args) => run(args).then((result) => ({ ok: true as const, result })));
   }
 
   handlers.set('kbSearch', async (args) => {

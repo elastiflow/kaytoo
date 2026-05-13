@@ -224,6 +224,7 @@ describe('createToolRegistry', () => {
   it('listTools includes every coreToolSpec when allowlist is empty', async () => {
     const reg = await createToolRegistry({ config: getConfig(baseEnv()), policy: defaultAgentPolicy });
     const listed = reg.listTools().map((t) => t.name);
+    // Length matches core count only when baseEnv() does not enable kbSearch/mcpToolCall in listTools.
     expect(listed.length).toBe(coreToolSpecs.length);
     for (const { name } of coreToolSpecs) {
       expect(listed).toContain(name);

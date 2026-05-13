@@ -1,4 +1,5 @@
 export const candidateFields = {
+  // Order matters: first caps match wins; prefer flow.bytes over delta/total when both exist.
   bytes: ['flow.bytes', 'flow.bytes.delta', 'flow.bytes.total', 'network.bytes'],
   srcIp: ['flow.client.ip.addr', 'source.address', 'source.ip', 'flow.src.ip.addr'],
   dstIp: ['flow.server.ip.addr', 'destination.address', 'destination.ip', 'flow.dst.ip.addr'],
