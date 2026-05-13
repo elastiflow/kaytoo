@@ -47,9 +47,7 @@ export async function topTalkersByBytes(
     pickAggField(fields.srcDisplayNameField),
   ]);
   const displayAggField =
-    displayNameAggField &&
-    displayNameAggField !== podNameAggField &&
-    displayNameAggField !== nsAggField
+    displayNameAggField && displayNameAggField !== podNameAggField && displayNameAggField !== nsAggField
       ? displayNameAggField
       : undefined;
 

@@ -17,6 +17,11 @@ const baseFields = {
   dstPortField: 'dest.port',
 };
 
+function bySrcAggs(client: { search: ReturnType<typeof vi.fn> }) {
+  return (client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } })
+    .body?.aggs?.by_src?.aggs;
+}
+
 describe('topTalkersByBytes', () => {
   beforeEach(() => {
     vi.mocked(fieldCaps.chooseFields).mockResolvedValue({ ...baseFields, srcDisplayNameField: 'host.name' });
@@ -52,8 +57,7 @@ describe('topTalkersByBytes', () => {
       talkers: Array<{ srcIp: string; topSrcDisplayNames?: { displayName: string; docCount: number }[] }>;
     };
 
-    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: unknown } } } };
-    expect(body.body?.aggs?.by_src?.aggs).toMatchObject({
+    expect(bySrcAggs(client)).toMatchObject({
       top_display_names: { terms: { field: 'host.name', size: 3 } },
     });
     expect(out.talkers[0]?.srcIp).toBe('192.168.1.1');
@@ -96,8 +100,7 @@ describe('topTalkersByBytes', () => {
 
     await topTalkersByBytes({ client: client as never, policy: defaultAgentPolicy, defaultIndex: index }, {});
 
-    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
-    expect(body.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
+    expect(bySrcAggs(client)?.top_display_names).toBeUndefined();
   });
 
   it('omits display agg when field caps mark srcDisplayNameField non-aggregatable', async () => {
@@ -120,8 +123,7 @@ describe('topTalkersByBytes', () => {
       talkers: Array<Record<string, unknown>>;
     };
 
-    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
-    expect(body.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
+    expect(bySrcAggs(client)?.top_display_names).toBeUndefined();
     expect(out.talkers[0]).not.toHaveProperty('topSrcDisplayNames');
   });
 
@@ -161,8 +163,7 @@ describe('topTalkersByBytes', () => {
 
     await topTalkersByBytes({ client: client as never, policy: defaultAgentPolicy, defaultIndex: index }, {});
 
-    const body = client.search.mock.calls[0]?.[0] as { body?: { aggs?: { by_src?: { aggs?: Record<string, unknown> } } } };
-    expect(body.body?.aggs?.by_src?.aggs?.top_display_names).toBeUndefined();
-    expect(body.body?.aggs?.by_src?.aggs?.top_namespaces).toMatchObject({ terms: { field: 'k8s.ns', size: 3 } });
+    expect(bySrcAggs(client)?.top_display_names).toBeUndefined();
+    expect(bySrcAggs(client)?.top_namespaces).toMatchObject({ terms: { field: 'k8s.ns', size: 3 } });
   });
 });
