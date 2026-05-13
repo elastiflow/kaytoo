@@ -48,6 +48,7 @@ function buildAgentPromptContract(opts: { intent: AgentIntent; tooling: string }
     '',
     `Tooling: ${opts.tooling}`,
     'State data limits plainly (e.g. missing AZ).',
+    'When summarizing tool output, use human byte sizes (KB/MB/GB) and Name (ip) when both exist.',
     '',
     `Intent: ${opts.intent}.`,
     ...(opts.intent === 'TROUBLESHOOTING'

@@ -56,7 +56,7 @@ describe('egress and portscan detectors', () => {
       currentMinutes: 60,
     });
     expect(high[0]?.severity).toBe('high');
-    expect(high[0]?.summary).toMatch(/vs expected/i);
+    expect(high[0]?.summary).toMatch(/expected \(/);
   });
 
   it('detectPortScans covers skip branches and high/medium severities', () => {
@@ -88,6 +88,43 @@ describe('egress and portscan detectors', () => {
       thresholds,
     });
     expect(high[0]?.severity).toBe('high');
+  });
+
+  it('detectEgressAnomalies spike mode uses egress_spike id prefix', () => {
+    const thresholds = {
+      egressMultiplier: 2,
+      egressMinBytes: 10,
+      portscanDistinctDstPorts: 50,
+      portscanMinPackets: 200,
+    };
+    const findings = detectEgressAnomalies({
+      mode: 'spike',
+      window: { from: 'a', to: 'b' },
+      current: [{ srcIp: '9.9.9.9', bytes: 500 }],
+      baseline: [],
+      thresholds,
+      baselineMinutes: 60,
+      currentMinutes: 15,
+    });
+    expect(findings[0]?.id.startsWith('egress_spike:')).toBe(true);
+  });
+
+  it('uses srcDisplayName in title when present', () => {
+    const thresholds = {
+      egressMultiplier: 2,
+      egressMinBytes: 10,
+      portscanDistinctDstPorts: 50,
+      portscanMinPackets: 200,
+    };
+    const findings = detectEgressAnomalies({
+      window: { from: 'a', to: 'b' },
+      current: [{ srcIp: '10.0.0.2', bytes: 500, srcDisplayName: 'workload-a' }],
+      baseline: [],
+      thresholds,
+      baselineMinutes: 60,
+      currentMinutes: 15,
+    });
+    expect(findings[0]?.title).toContain('workload-a (10.0.0.2)');
   });
 
   it('flags IPs above baseline multiplier and min bytes for egress anomaly', () => {
@@ -140,6 +177,23 @@ describe('egress and portscan detectors', () => {
     expect(findings[0]!.evidence.bytes).toBe(130_000_000);
     expect(findings[0]!.evidence.contributingSrcIps).toEqual(['2001:db8::1', '2001:db8::2']);
     expect(findings[0]!.title).toMatch(/IPv6 \/64/);
+  });
+
+  it('IPv6 /64 title includes display name when set', () => {
+    const findings = detectEgressAnomalies({
+      window: { from: '2026-01-01T00:00:00.000Z', to: '2026-01-01T00:15:00.000Z' },
+      current: [{ srcIp: '2001:db8::1', bytes: 60_000_000, srcDisplayName: 'pod-a' }],
+      baseline: [{ srcIp: '2001:db8::1', bytes: 500 }],
+      thresholds: {
+        egressMultiplier: 3,
+        egressMinBytes: 50_000_000,
+        portscanDistinctDstPorts: 50,
+        portscanMinPackets: 200,
+      },
+      baselineMinutes: 24 * 60,
+      currentMinutes: 15,
+    });
+    expect(findings[0]?.title).toContain('pod-a (2001:db8::1)');
   });
 
   it('flags likely port scans based on distinct destination ports and packets', () => {

@@ -46,7 +46,9 @@ describe('enrichEgressFinding', () => {
         body: {
           aggregations: {
             by_dst: { buckets: [{ key: '8.8.8.8', doc_count: 2, dst_bytes: { value: 99 } }] },
-            by_dport: { buckets: [{ key: 443, doc_count: 1, pbytes: { value: 88 } }] },
+            by_dport: {
+              buckets: [{ key: 443, doc_count: 1, pbytes: { value: 88 } }],
+            },
             by_client_ns: { buckets: [{ key: 'default', doc_count: 1, nb: { value: 77 } }] },
             by_client_pod: { buckets: [{ key: 'pod-a', doc_count: 1, pb: { value: 66 } }] },
           },
@@ -57,10 +59,95 @@ describe('enrichEgressFinding', () => {
     const out = await enrichEgressFinding({ client, index: 'ix', fields, finding });
 
     expect(client.search).toHaveBeenCalledTimes(1);
-    expect(out.evidence['topDestinations']).toEqual([{ dstIp: '8.8.8.8', bytes: 99, flows: 2 }]);
+    expect(out.evidence['topDestinations']).toEqual([
+      { dstIp: '8.8.8.8', dstEndpointLabel: '8.8.8.8', bytes: 99, flows: 2 },
+    ]);
     expect(out.evidence['topDstPorts']).toEqual([{ port: 443, bytes: 88, flows: 1 }]);
     expect(out.evidence['topClientNamespaces']).toEqual([{ namespace: 'default', bytes: 77, flows: 1 }]);
     expect(out.evidence['topClientPods']).toEqual([{ podName: 'pod-a', bytes: 66, flows: 1 }]);
+  });
+
+  it('includes dstDisplayName and dstEndpointLabel when dstDisplayNameField resolves', async () => {
+    const finding: Finding = {
+      id: 'egress:10.0.0.1',
+      kind: 'egress_anomaly',
+      severity: 'high',
+      title: 't',
+      summary: 's',
+      evidence: { contributingSrcIps: ['10.0.0.1'] },
+      window: { from: '2020-01-01T00:00:00.000Z', to: '2020-01-01T00:15:00.000Z' },
+    };
+    const fieldsWithDst: FieldPreference = {
+      ...fields,
+      dstDisplayNameField: 'destination.k8s.pod.name',
+    };
+    const client = {
+      search: vi.fn().mockResolvedValue({
+        body: {
+          aggregations: {
+            by_dst: {
+              buckets: [
+                {
+                  key: '8.8.8.8',
+                  doc_count: 2,
+                  dst_bytes: { value: 99 },
+                  top_dst_display: { buckets: [{ key: 'api-svc', doc_count: 1, dnm: { value: 99 } }] },
+                },
+              ],
+            },
+            by_dport: { buckets: [] },
+            by_client_ns: { buckets: [] },
+            by_client_pod: { buckets: [] },
+          },
+        },
+      }),
+    } as unknown as SearchClient;
+
+    const out = await enrichEgressFinding({ client, index: 'ix', fields: fieldsWithDst, finding });
+    expect(out.evidence['topDestinations']).toEqual([
+      {
+        dstIp: '8.8.8.8',
+        dstDisplayName: 'api-svc',
+        dstEndpointLabel: 'api-svc (8.8.8.8)',
+        bytes: 99,
+        flows: 2,
+      },
+    ]);
+  });
+
+  it('includes protocol on topDstPorts when protoField resolves', async () => {
+    const finding: Finding = {
+      id: 'egress:10.0.0.1',
+      kind: 'egress_anomaly',
+      severity: 'high',
+      title: 't',
+      summary: 's',
+      evidence: { contributingSrcIps: ['10.0.0.1'] },
+      window: { from: '2020-01-01T00:00:00.000Z', to: '2020-01-01T00:15:00.000Z' },
+    };
+    const fieldsWithProto: FieldPreference = { ...fields, protoField: 'l4.proto.name' };
+    const client = {
+      search: vi.fn().mockResolvedValue({
+        body: {
+          aggregations: {
+            by_dst: { buckets: [] },
+            by_dport: {
+              buckets: [
+                {
+                  key: 443,
+                  doc_count: 2,
+                  pbytes: { value: 100 },
+                  top_proto: { buckets: [{ key: 'tcp', doc_count: 2, pproto: { value: 100 } }] },
+                },
+              ],
+            },
+          },
+        },
+      }),
+    } as unknown as SearchClient;
+
+    const out = await enrichEgressFinding({ client, index: 'ix', fields: fieldsWithProto, finding });
+    expect(out.evidence['topDstPorts']).toEqual([{ port: 443, bytes: 100, flows: 2, protocol: 'tcp' }]);
   });
 });
 

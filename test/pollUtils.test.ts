@@ -63,6 +63,32 @@ describe('selectNovelInsightPostBatch', () => {
     const batch = selectNovelInsightPostBatch(findings, dedupe);
     expect(batch.map((f) => f.id)).toEqual(['a', 'b', 'd']);
   });
+
+  it('egress primary and spike stay separate batch entries for one host', () => {
+    const dedupe = { has: () => false };
+    const key = 'v6-64:2001:0db8:0000:0000';
+    const findings: Finding[] = [
+      {
+        id: `egress:${key}`,
+        kind: 'egress_anomaly',
+        severity: 'medium',
+        title: 't1',
+        summary: 's',
+        evidence: {},
+        window: { from: 'a', to: 'b' },
+      },
+      {
+        id: `egress_spike:${key}`,
+        kind: 'egress_anomaly',
+        severity: 'medium',
+        title: 't2',
+        summary: 's',
+        evidence: {},
+        window: { from: 'a', to: 'b' },
+      },
+    ];
+    expect(selectNovelInsightPostBatch(findings, dedupe)).toHaveLength(2);
+  });
 });
 
 describe('findingSeverityRank', () => {

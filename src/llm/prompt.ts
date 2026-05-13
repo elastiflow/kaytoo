@@ -8,7 +8,9 @@ export function buildSlackSummaryPrompt(findings: Finding[]): ChatMessage[] {
     'You decide whether a network engineer would want a proactive Slack alert for these findings (noise vs actionable).',
     'If not worth alerting, set post to false (text may be empty). If worth alerting, set post to true and write concise Slack copy.',
     'Be specific, avoid jargon, avoid false certainty, and include suggested next checks when post is true.',
-    'When evidence includes topDestinations, topDstPorts, topClientNamespaces, or topClientPods, use them so readers see where bytes went (IPs, ports) and which Kubernetes clients were involved when present.',
+    'Prefer structured evidence (comparisonFrame, volumeSummary, bytesHuman, window) over guessing.',
+    'Use topDestinations.dstEndpointLabel, dstDisplayName, topDstPorts.protocol, and K8s fields when present; prefer Name (IP) over raw addresses.',
+    'Do not assume exfiltration for common benign patterns (HTTPS, DNS, NTP, CDN-scale volume); stay calibrated.',
     'Output MUST be valid JSON: {"post":true|false,"text":"..."} with no extra keys. When post is false, use empty string for text.',
   ];
   const system: ChatMessage = {

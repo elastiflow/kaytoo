@@ -25,6 +25,26 @@ const llmTestEnv = {
   LLM_API_KEY: 'k',
 } as const;
 
+function egressWindowSpanMinutes(window: { from: string; to: string }): number {
+  return (new Date(window.to).getTime() - new Date(window.from).getTime()) / 60_000;
+}
+
+function egressMockHighSpike(opts: { window: { from: string; to: string } }) {
+  const spanMin = egressWindowSpanMinutes(opts.window);
+  if (spanMin >= 1200) return [{ srcIp: '10.0.0.9', bytes: 1_000 }];
+  if (spanMin >= 55 && spanMin <= 65) return [{ srcIp: '10.0.0.9', bytes: 120_000_000 }];
+  if (spanMin >= 12 && spanMin <= 18) return [{ srcIp: '10.0.0.9', bytes: 120_000_000 }];
+  return [];
+}
+
+function egressMockLowOnly(opts: { window: { from: string; to: string } }) {
+  const spanMin = egressWindowSpanMinutes(opts.window);
+  if (spanMin >= 1200) return [{ srcIp: '10.0.0.9', bytes: 1_000 }];
+  if (spanMin >= 55 && spanMin <= 65) return [{ srcIp: '10.0.0.9', bytes: 80_000_000 }];
+  if (spanMin >= 12 && spanMin <= 18) return [{ srcIp: '10.0.0.9', bytes: 80_000_000 }];
+  return [];
+}
+
 function mockInsightSink() {
   return { postInsight: vi.fn().mockResolvedValue(undefined) };
 }
@@ -236,13 +256,9 @@ describe('startInsightEngine', () => {
   it('posts heuristic egress findings when flow queries show a spike', async () => {
     eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
     eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
-    eng.queryTopEgressBySource.mockImplementation((opts: { window: { from: string; to: string } }) => {
-      const spanMin =
-        (new Date(opts.window.to).getTime() - new Date(opts.window.from).getTime()) / 60_000;
-      if (spanMin > 60) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 1_000 }]);
-      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 120_000_000 }]);
-      return Promise.resolve([]);
-    });
+    eng.queryTopEgressBySource.mockImplementation((opts: { window: { from: string; to: string } }) =>
+      Promise.resolve(egressMockHighSpike(opts)),
+    );
     eng.queryPortscanCandidates.mockResolvedValue([]);
 
     const { startInsightEngine } = await import('../src/insights/engine.js');
@@ -306,13 +322,9 @@ describe('startInsightEngine', () => {
   it('sorts multiple heuristic findings by severity (comparator runs)', async () => {
     eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
     eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
-    eng.queryTopEgressBySource.mockImplementation((opts: { window: { from: string; to: string } }) => {
-      const spanMin =
-        (new Date(opts.window.to).getTime() - new Date(opts.window.from).getTime()) / 60_000;
-      if (spanMin > 60) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 1_000 }]);
-      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 120_000_000 }]);
-      return Promise.resolve([]);
-    });
+    eng.queryTopEgressBySource.mockImplementation((opts: { window: { from: string; to: string } }) =>
+      Promise.resolve(egressMockHighSpike(opts)),
+    );
     eng.queryPortscanCandidates.mockResolvedValue([
       { srcIp: '10.0.0.8', distinctDstPorts: 160, packets: 300, bytes: 1 },
     ]);
@@ -342,13 +354,9 @@ describe('startInsightEngine', () => {
   it('does not call LLM when heuristic findings are only low severity', async () => {
     eng.fetchAlerting.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
     eng.fetchAd.mockResolvedValue({ ok: true, findings: [], healthyEmpty: false });
-    eng.queryTopEgressBySource.mockImplementation((opts: { window: { from: string; to: string } }) => {
-      const spanMin =
-        (new Date(opts.window.to).getTime() - new Date(opts.window.from).getTime()) / 60_000;
-      if (spanMin > 60) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 1_000 }]);
-      if (spanMin > 10 && spanMin < 20) return Promise.resolve([{ srcIp: '10.0.0.9', bytes: 80_000_000 }]);
-      return Promise.resolve([]);
-    });
+    eng.queryTopEgressBySource.mockImplementation((opts: { window: { from: string; to: string } }) =>
+      Promise.resolve(egressMockLowOnly(opts)),
+    );
     eng.queryPortscanCandidates.mockResolvedValue([]);
 
     const { startInsightEngine } = await import('../src/insights/engine.js');

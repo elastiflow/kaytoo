@@ -26,7 +26,7 @@ export function insightSeverityEligibleForPost(s: Finding['severity']): boolean 
   return s === 'medium' || s === 'high';
 }
 
-/** Novel (not in dedupe), medium|high only, severity-sorted, capped for proactive post. */
+/** Novel medium|high, dedupe keyed by finding id, severity order, max INSIGHT_POST_MAX. Primary vs spike egress use different ids so one host may appear twice. */
 export function selectNovelInsightPostBatch(findings: Finding[], dedupe: DedupeLike): Finding[] {
   const novel = findings.filter((f) => !dedupe.has(f.id));
   return novel
