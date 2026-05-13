@@ -80,7 +80,7 @@ function flowPlaybooksCompressed(): string[] {
     '- State plainly when expected fields are missing (AZ, nodes, duration, tcp flags, etc.).',
     '',
     'Examples (not exhaustive):',
-    '- topTalkersByBytes: set includeDistinctPods when pod names matter.',
+    '- topTalkersByBytes: rows include topSrcDisplayNames when mapped; set includeDistinctPods when pod cardinality matters.',
     '- namespaceTrafficMatrix: compare internal vs external bytes by namespace.',
     '- egressBytesVsBaseline vs egressSpikeDrilldown: table-only baseline vs per-source top destinations ' +
       'in one call.',
