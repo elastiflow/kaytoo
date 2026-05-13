@@ -34,5 +34,18 @@ spec:
               containerPort: {{ .Values.httpChat.port }}
               protocol: TCP
           {{- end }}
+          {{- if .Values.persistence.insightDedupe.enabled }}
+          env:
+            - name: KAYTOO_INSIGHT_DEDUPE_PATH
+              value: {{ printf "%s/insight-dedupe.json" .Values.persistence.insightDedupe.mountPath | quote }}
+          volumeMounts:
+            - name: insight-dedupe
+              mountPath: {{ .Values.persistence.insightDedupe.mountPath | quote }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      {{- if .Values.persistence.insightDedupe.enabled }}
+      volumes:
+        - name: insight-dedupe
+          emptyDir: {}
+      {{- end }}

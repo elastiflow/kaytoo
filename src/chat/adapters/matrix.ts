@@ -1,4 +1,5 @@
 import {
+  ClientEvent,
   createClient,
   type MatrixClient,
   type MatrixEvent,
@@ -6,6 +7,7 @@ import {
   type Membership,
   type Room,
   RoomEvent,
+  SyncState,
 } from 'matrix-js-sdk';
 import { getLogger } from '../../logging/logger.js';
 import { createMatrixJsSdkLogger, type MatrixSdkLevel } from '../../logging/matrixSdkLogger.js';
@@ -60,11 +62,15 @@ export async function startMatrixAdapter(opts: {
     client.credentials = { userId: resp.user_id };
   }
 
+  /** False until first `PREPARED` sync so initial /sync timeline hydration is not treated as new chat. */
+  let acceptingLiveTimeline = false;
+
   const onTimeline = async (
     event: MatrixEvent,
     room: Room | undefined,
     toStartOfTimeline: boolean | undefined,
   ): Promise<void> => {
+    if (!acceptingLiveTimeline) return;
     if (toStartOfTimeline) return;
     if (event.status !== null) return;
     if (event.getType() !== 'm.room.message') return;
@@ -107,6 +113,11 @@ export async function startMatrixAdapter(opts: {
     }
   };
 
+  const onSync = (state: SyncState): void => {
+    if (state === SyncState.Prepared) acceptingLiveTimeline = true;
+  };
+
+  client.on(ClientEvent.Sync, onSync);
   client.on(RoomEvent.Timeline, onTimeline);
   client.on(RoomEvent.MyMembership, onMyMembership);
 
@@ -129,6 +140,7 @@ export async function startMatrixAdapter(opts: {
   return {
     client,
     stop: async () => {
+      client.removeListener(ClientEvent.Sync, onSync);
       client.removeListener(RoomEvent.Timeline, onTimeline);
       client.removeListener(RoomEvent.MyMembership, onMyMembership);
       await client.stopClient();

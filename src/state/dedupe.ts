@@ -15,6 +15,22 @@ export class DedupeStore {
     this.seen.set(key, now + this.ttlMs);
   }
 
+  /** Restore TTL entries from disk (expiry = unix ms). Ignores expired rows. */
+  restore(entries: ReadonlyArray<readonly [string, number]>, now = Date.now()): void {
+    this.gc(now);
+    for (const [k, exp] of entries) {
+      if (typeof k === 'string' && typeof exp === 'number' && Number.isFinite(exp) && exp > now) {
+        this.seen.set(k, exp);
+      }
+    }
+  }
+
+  /** Current non-expired entries for persistence. */
+  snapshot(now = Date.now()): [string, number][] {
+    this.gc(now);
+    return [...this.seen.entries()];
+  }
+
   private gc(now: number): void {
     for (const [k, exp] of this.seen) {
       if (exp <= now) this.seen.delete(k);

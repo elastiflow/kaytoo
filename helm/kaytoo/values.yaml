@@ -73,6 +73,12 @@ logging:
 networkPolicy:
   enabled: false
 
+# Optional writable volume for insight dedupe across pod restarts (emptyDir).
+persistence:
+  insightDedupe:
+    enabled: false
+    mountPath: /var/lib/kaytoo
+
 # Optional e2e / automation: HTTP POST /chat on KAYTOO_HTTP_CHAT_BIND (console mode only in app).
 httpChat:
   enabled: false

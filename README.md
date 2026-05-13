@@ -141,6 +141,7 @@ Kaytoo is configured via environment variables. For a minimal example, see `.env
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
 | `KAYTOO_KB_DOCS_DIR` | no | - | Directory of `.md`/`.txt` docs; enables `kbSearch`. |
+| `KAYTOO_INSIGHT_DEDUPE_PATH` | no | - | If set, path to a JSON file where proactive insight finding IDs are persisted across restarts (same TTL as in-memory dedupe). Use a writable volume in Kubernetes. |
 | `KAYTOO_MCP_JSONRPC_URL` | no | - | JSON-RPC endpoint; enables `mcpToolCall` (`tools/call`). |
 | `KAYTOO_MCP_JSONRPC_BEARER` | no | - | Bearer token for the JSON-RPC endpoint. |
 
@@ -197,7 +198,7 @@ Official references: [Socket Mode](https://api.slack.com/apis/connections/socket
 
 #### Matrix
 
-Uses [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk) with an in-memory store (no local sync database). The bot auto-joins rooms it is invited to. End-to-end encrypted rooms are not supported for this bot path.
+Uses [`matrix-js-sdk`](https://github.com/matrix-org/matrix-js-sdk) with an in-memory store (no local sync database). The bot auto-joins rooms it is invited to. End-to-end encrypted rooms are not supported for this bot path. **Inbound chat is ignored until the first successful sync completes**, so a fresh process does not treat the homeserver’s initial timeline window as new user messages (avoids replay after pod restarts).
 
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |

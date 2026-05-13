@@ -91,6 +91,8 @@ const configSchema = z
     behavior: z.object({
       pollIntervalSeconds: z.string().default('300').pipe(intFromString),
       dedupeTtlSeconds: z.string().default('3600').pipe(intFromString),
+      /** When set, insight finding dedupe survives restarts (JSON file of id → expiry ms). */
+      insightDedupePath: z.string().min(1).optional(),
     }),
     thresholds: z.object({
       egressMultiplier: z.coerce.number().finite().positive().default(3),
@@ -275,7 +277,11 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, opts?: GetConfig
       apiKey: env.LLM_API_KEY,
       model: env.LLM_MODEL,
     },
-    behavior: {},
+    behavior: {
+      pollIntervalSeconds: env.KAYTOO_POLL_INTERVAL_SECONDS,
+      dedupeTtlSeconds: env.KAYTOO_INSIGHT_DEDUPE_TTL_SECONDS,
+      insightDedupePath: optStr(env.KAYTOO_INSIGHT_DEDUPE_PATH),
+    },
     thresholds: {},
     logging: { level: env.LOG_LEVEL },
     conversation: {},

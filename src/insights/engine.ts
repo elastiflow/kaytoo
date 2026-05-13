@@ -21,6 +21,7 @@ import {
 } from './opensearchDetections.js';
 import { selectNovelInsightPostBatch, shouldSkipHeuristicPoll } from './pollUtils.js';
 import { enrichInsightsEgressBatch } from './enrichEgressEvidence.js';
+import { loadInsightDedupeFile, saveInsightDedupeFile } from './insightDedupeFile.js';
 
 function detectionFetchFailure(e: unknown): DetectionFetchResult {
   return { ok: false, findings: [], warning: thrownMessage(e) };
@@ -55,6 +56,27 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     includeDebugBodies: config.logging.includeDebugBodies,
   });
   const dedupe = new DedupeStore(config.behavior.dedupeTtlSeconds * 1000);
+  const dedupePersistPath = config.behavior.insightDedupePath;
+  let dedupePersistTimer: NodeJS.Timeout | undefined;
+  const scheduleDedupePersist = (): void => {
+    if (!dedupePersistPath) return;
+    if (dedupePersistTimer) clearTimeout(dedupePersistTimer);
+    dedupePersistTimer = setTimeout(() => {
+      dedupePersistTimer = undefined;
+      void saveInsightDedupeFile(dedupePersistPath, dedupe).catch((e) =>
+        log.warn({ path: dedupePersistPath, ...logErr(e) }, 'insight dedupe save failed'),
+      );
+    }, 400);
+  };
+
+  if (dedupePersistPath) {
+    try {
+      await loadInsightDedupeFile(dedupePersistPath, dedupe);
+    } catch (e) {
+      log.warn({ path: dedupePersistPath, ...logErr(e) }, 'insight dedupe load failed');
+    }
+  }
+
   const warnAt = new Map<string, number>();
   let timer: NodeJS.Timeout | undefined;
   let inFlight = false;
@@ -203,6 +225,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       return;
     }
     toPost.forEach((f) => dedupe.mark(f.id));
+    scheduleDedupePersist();
     log.info({ findingCount: toPost.length, output: config.output }, 'posted findings');
   }
 
@@ -212,6 +235,10 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     stop: () => {
       controller.abort();
       if (timer) clearTimeout(timer);
+      if (dedupePersistTimer) clearTimeout(dedupePersistTimer);
+      if (dedupePersistPath) {
+        void saveInsightDedupeFile(dedupePersistPath, dedupe).catch(() => {});
+      }
     },
   };
 }

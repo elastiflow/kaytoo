@@ -32,6 +32,7 @@ describe('getConfig', () => {
     expect(cfg.conversation.maxTurns).toBe(20);
     expect(cfg.conversation.summarizeAfterTurns).toBe(12);
     expect(cfg.conversation.storePath).toBeUndefined();
+    expect(cfg.behavior.insightDedupePath).toBeUndefined();
     expect(cfg.knowledge.docsDir).toBeUndefined();
     expect(cfg.knowledge.maxSnippetChars).toBe(800);
     expect(cfg.agent.toolAllowlist).toEqual([]);
@@ -42,6 +43,14 @@ describe('getConfig', () => {
     expect(cfg.agent.maxAggDepth).toBe(4);
     expect(cfg.agent.maxAggsNodes).toBe(28);
     expect(cfg.agent.aggregateRequestTimeoutMs).toBe(25_000);
+  });
+
+  it('parses KAYTOO_INSIGHT_DEDUPE_PATH when set', () => {
+    const cfg = getConfig({
+      ...baseEnv,
+      KAYTOO_INSIGHT_DEDUPE_PATH: '/data/insight-dedupe.json',
+    });
+    expect(cfg.behavior.insightDedupePath).toBe('/data/insight-dedupe.json');
   });
 
   it('supports numeric overrides and boolean strings', () => {

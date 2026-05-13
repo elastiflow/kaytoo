@@ -3,14 +3,18 @@ import type { MatrixClient, MatrixEvent, Membership, Room } from 'matrix-js-sdk'
 
 const timelineHandlers: Array<(e: MatrixEvent, room: Room | undefined, toStart: boolean | undefined) => void> = [];
 const membershipHandlers: Array<(room: Room, m: Membership) => void> = [];
+const syncHandlers: Array<(state: string) => void> = [];
 
 vi.mock('matrix-js-sdk', () => ({
   RoomEvent: { Timeline: 'Timeline', MyMembership: 'MyMembership' },
+  ClientEvent: { Sync: 'sync' },
+  SyncState: { Prepared: 'PREPARED' },
   MemoryStore: vi.fn(),
   createClient: vi.fn(() => ({
     on: vi.fn((ev: string, fn: (...a: unknown[]) => void) => {
       if (ev === 'Timeline') timelineHandlers.push(fn as (typeof timelineHandlers)[0]);
       if (ev === 'MyMembership') membershipHandlers.push(fn as (typeof membershipHandlers)[0]);
+      if (ev === 'sync') syncHandlers.push(fn as (state: string) => void);
     }),
     removeListener: vi.fn(),
     startClient: vi.fn().mockResolvedValue(undefined),
@@ -66,10 +70,15 @@ function mkEvent(over: Partial<{
   } as MatrixEvent;
 }
 
+function emitMatrixPrepared(): void {
+  for (const h of syncHandlers) h('PREPARED');
+}
+
 describe('startMatrixAdapter', () => {
   afterEach(() => {
     timelineHandlers.length = 0;
     membershipHandlers.length = 0;
+    syncHandlers.length = 0;
     vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
@@ -94,6 +103,28 @@ describe('startMatrixAdapter', () => {
     expect(client.stopClient).toHaveBeenCalled();
   });
 
+  it('ignores timeline until first PREPARED sync', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ user_id: '@bot:hs' }) }),
+    );
+    const onEvent = vi.fn().mockResolvedValue(undefined);
+    const { stop } = await startMatrixAdapter({
+      homeserverUrl: 'https://hs',
+      auth: { accessToken: 'tok' },
+      matrixSdkLevel: 'ERROR',
+      onEvent,
+    });
+    const h = timelineHandlers[0]!;
+    await h(mkEvent({ body: 'before', sender: '@peer:hs', id: '$early' }), mkRoom('!r:hs'), false);
+    expect(onEvent).not.toHaveBeenCalled();
+    emitMatrixPrepared();
+    await h(mkEvent({ body: 'after', sender: '@peer:hs', id: '$late' }), mkRoom('!r:hs'), false);
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ text: 'after', eventId: '$late' }));
+    await stop();
+  });
+
   it('timeline ignores sync backfill, pending edits, non-text, self, empty room', async () => {
     vi.stubGlobal(
       'fetch',
@@ -107,6 +138,7 @@ describe('startMatrixAdapter', () => {
       onEvent,
     });
     const h = timelineHandlers[0]!;
+    emitMatrixPrepared();
     const room = mkRoom('!r:hs');
     await h(mkEvent({}), room, true);
     await h(mkEvent({ status: 'sending' }), room, false);
@@ -133,6 +165,7 @@ describe('startMatrixAdapter', () => {
       onEvent,
     });
     const h = timelineHandlers[0]!;
+    emitMatrixPrepared();
     await h(mkEvent({ body: 'ping', sender: '@peer:hs', id: '$e1' }), mkRoom('!room:hs'), false);
     expect(onEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -157,6 +190,7 @@ describe('startMatrixAdapter', () => {
       matrixSdkLevel: 'ERROR',
       onEvent,
     });
+    emitMatrixPrepared();
     await timelineHandlers[0]!(
       mkEvent({ threadRootId: '$root', sender: '@peer:hs' }),
       mkRoom('!room:hs'),
@@ -213,6 +247,7 @@ describe('startMatrixAdapter', () => {
           on: vi.fn((ev: string, fn: (...a: unknown[]) => void) => {
             if (ev === 'Timeline') timelineHandlers.push(fn as (typeof timelineHandlers)[0]);
             if (ev === 'MyMembership') membershipHandlers.push(fn as (typeof membershipHandlers)[0]);
+            if (ev === 'sync') syncHandlers.push(fn as (state: string) => void);
           }),
           removeListener: vi.fn(),
           startClient: vi.fn().mockResolvedValue(undefined),
