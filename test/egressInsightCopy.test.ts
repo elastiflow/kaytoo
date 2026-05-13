@@ -14,4 +14,9 @@ describe('egressInsightCopy', () => {
   it('buildEgressVolumeSummary includes ratio when expected positive', () => {
     expect(buildEgressVolumeSummary(100, 50, 2)).toContain('2.0x');
   });
+
+  it('buildEgressVolumeSummary labels non-finite ratio distinctly', () => {
+    expect(buildEgressVolumeSummary(100, 50, Number.POSITIVE_INFINITY)).toContain('(highx)');
+    expect(buildEgressVolumeSummary(100, 50, Number.NaN)).toContain('(n/ax)');
+  });
 });

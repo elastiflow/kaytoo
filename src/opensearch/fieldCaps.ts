@@ -26,6 +26,7 @@ export type FieldPreference = {
 };
 
 const candidateFields = {
+  // fieldCaps picks first present match; order prefers stable totals over deltas when both exist.
   bytes: ['flow.bytes', 'flow.bytes.delta', 'flow.bytes.total', 'network.bytes'],
   srcIp: ['flow.client.ip.addr', 'source.address', 'source.ip', 'flow.src.ip.addr'],
   dstIp: ['flow.server.ip.addr', 'destination.address', 'destination.ip', 'flow.dst.ip.addr'],

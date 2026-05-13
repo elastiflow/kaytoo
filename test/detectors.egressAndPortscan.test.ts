@@ -179,6 +179,23 @@ describe('egress and portscan detectors', () => {
     expect(findings[0]!.title).toMatch(/IPv6 \/64/);
   });
 
+  it('includes display name in IPv6 /64 title when present', () => {
+    const findings = detectEgressAnomalies({
+      window: { from: '2026-01-01T00:00:00.000Z', to: '2026-01-01T00:15:00.000Z' },
+      current: [{ srcIp: '2001:db8::1', bytes: 60_000_000, srcDisplayName: 'pod-a' }],
+      baseline: [{ srcIp: '2001:db8::1', bytes: 500 }],
+      thresholds: {
+        egressMultiplier: 3,
+        egressMinBytes: 50_000_000,
+        portscanDistinctDstPorts: 50,
+        portscanMinPackets: 200,
+      },
+      baselineMinutes: 24 * 60,
+      currentMinutes: 15,
+    });
+    expect(findings[0]?.title).toContain('pod-a (2001:db8::1)');
+  });
+
   it('flags likely port scans based on distinct destination ports and packets', () => {
     const findings = detectPortScans({
       window: { from: '2026-01-01T00:00:00.000Z', to: '2026-01-01T00:05:00.000Z' },

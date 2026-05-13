@@ -69,7 +69,11 @@ function egressFindingForKey(opts: {
   const id = `${mode === 'spike' ? 'egress_spike' : 'egress'}:${key}`;
   const p64 = ipv6GlobalUnicastPrefix64(sampleRow.srcIp);
   const srcLabel = formatEndpointLabel({ displayName: sampleRow.srcDisplayName, ip: sampleRow.srcIp });
-  const title = p64 ? `Unusual egress from IPv6 /64 ${p64}` : `Unusual egress from ${srcLabel}`;
+  const title = p64
+    ? sampleRow.srcDisplayName
+      ? `Unusual egress from IPv6 /64 ${p64} (${srcLabel})`
+      : `Unusual egress from IPv6 /64 ${p64}`
+    : `Unusual egress from ${srcLabel}`;
   const vol = buildEgressVolumeSummary(totalBytes, expectedBytes, ratio);
   const summary = p64 ? `IPv6 /64 ${p64}: ${vol} top host ${srcLabel}.` : `${srcLabel}: ${vol}`;
 

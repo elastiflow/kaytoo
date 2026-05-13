@@ -11,16 +11,22 @@ export async function queryTopEgressBySource(opts: {
   window: { from: string; to: string };
   size: number;
 }): Promise<EgressAggRow[]> {
-  const bySrcAggs: Record<string, unknown> = {
-    bytes: { sum: { field: opts.fields.bytesField } },
-  };
   const subField = opts.fields.srcDisplayNameField;
-  if (subField) {
-    bySrcAggs.top_src_display = {
-      terms: { field: subField, size: 1, order: { lbl_bytes: 'desc' } },
-      aggs: { lbl_bytes: { sum: { field: opts.fields.bytesField } } },
-    };
-  }
+  const bySrc = subField
+    ? {
+        terms: { field: opts.fields.srcIpField, size: opts.size },
+        aggs: {
+          bytes: { sum: { field: opts.fields.bytesField } },
+          top_src_display: {
+            terms: { field: subField, size: 1, order: { lbl_bytes: 'desc' as const } },
+            aggs: { lbl_bytes: { sum: { field: opts.fields.bytesField } } },
+          },
+        },
+      }
+    : {
+        terms: { field: opts.fields.srcIpField, size: opts.size },
+        aggs: { bytes: { sum: { field: opts.fields.bytesField } } },
+      };
 
   const res = await timedSearch('queryTopEgressBySource', opts.client, {
     index: opts.index,
@@ -31,13 +37,8 @@ export async function queryTopEgressBySource(opts: {
           '@timestamp': { gte: opts.window.from, lt: opts.window.to },
         },
       },
-      aggs: {
-        by_src: {
-          terms: { field: opts.fields.srcIpField, size: opts.size },
-          aggs: bySrcAggs,
-        },
-      },
-    } as never,
+      aggs: { by_src: bySrc },
+    },
   });
   const body = (res as { body?: unknown } | null | undefined)?.body;
 

@@ -120,6 +120,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
         const spikeCurrentWindow = windowRelative({ to: now, minutesBack: spike.currentMinutes });
         const portscanWindow = windowRelative({ to: now, minutesBack: portscanMinutes });
 
+        // Three egress aggs per poll (primary window, spike window, shared baseline); cost vs prior two-query design.
         const [primaryCurrentEgress, spikeCurrentEgress, baselineEgress, portscanRows] = await Promise.all([
           queryTopEgressBySource({
             client,
