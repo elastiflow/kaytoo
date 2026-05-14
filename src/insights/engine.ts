@@ -57,22 +57,25 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     'resolved opensearch field mapping',
   );
 
-  let nativePipeline: NativeAnomalyPipelineResult = { ok: false, hasScopedSources: false };
-  let esMlClient: ElasticsearchMlClient | null = null;
-  try {
-    const ensured = await ensureNativeAnomalyPipeline({
-      backend: config.search.backend,
-      search: config.search,
-      searchClient: client,
-      indexPattern: config.search.indexPattern,
-      fields,
-      pollIntervalSeconds: config.behavior.pollIntervalSeconds,
-    });
-    nativePipeline = ensured.pipeline;
-    esMlClient = ensured.esMlClient;
-  } catch (e) {
-    log.warn({ ...logErr(e) }, 'native anomaly pipeline ensure failed; continuing without scoped native anomaly');
-  }
+  const nativeAnomaly = await (async (): Promise<{
+    pipeline: NativeAnomalyPipelineResult;
+    esMlClient: ElasticsearchMlClient | null;
+  }> => {
+    try {
+      return await ensureNativeAnomalyPipeline({
+        backend: config.search.backend,
+        search: config.search,
+        searchClient: client,
+        indexPattern: config.search.indexPattern,
+        fields,
+        pollIntervalSeconds: config.behavior.pollIntervalSeconds,
+      });
+    } catch (e) {
+      log.warn({ ...logErr(e) }, 'native anomaly pipeline ensure failed; continuing without scoped native anomaly');
+      return { pipeline: { ok: false, hasScopedSources: false }, esMlClient: null };
+    }
+  })();
+  const { pipeline: nativePipeline, esMlClient } = nativeAnomaly;
 
   const llm = createOpenAiCompatClient({
     ...config.llm,
@@ -80,19 +83,18 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   });
   const dedupe = new DedupeStore(config.behavior.dedupeTtlSeconds * 1000);
   const shouldWarnDegraded = createThrottle(10 * 60_000);
-  let timer: NodeJS.Timeout | undefined;
-  let inFlight = false;
+  const pollLoop = { timer: undefined as NodeJS.Timeout | undefined, inFlight: false };
 
   const nativePipelineReady = nativePipeline.ok === true && nativePipeline.hasScopedSources === true;
 
   const scheduleNext = (): void => {
     if (controller.signal.aborted) return;
-    timer = setTimeout(() => void pollOnce(), config.behavior.pollIntervalSeconds * 1000);
+    pollLoop.timer = setTimeout(() => void pollOnce(), config.behavior.pollIntervalSeconds * 1000);
   };
 
   async function pollOnce(): Promise<void> {
-    if (inFlight) return;
-    inFlight = true;
+    if (pollLoop.inFlight) return;
+    pollLoop.inFlight = true;
     return runWithLogContextAsync({ pollId: randomUUID() }, async () => {
       try {
         if (controller.signal.aborted) return;
@@ -210,7 +212,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       } catch (e) {
         log.error({ ...logErr(e) }, 'poll failed');
       } finally {
-        inFlight = false;
+        pollLoop.inFlight = false;
         scheduleNext();
       }
     });
@@ -258,7 +260,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   return {
     stop: () => {
       controller.abort();
-      if (timer) clearTimeout(timer);
+      if (pollLoop.timer) clearTimeout(pollLoop.timer);
     },
   };
 }

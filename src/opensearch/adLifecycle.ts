@@ -163,6 +163,51 @@ function buildCreateDetectorBody(opts: {
   };
 }
 
+type EgressDetectorEnsure = { ok: true; detectorIds: string[] } | { ok: false; result: NativeAnomalyPipelineResult };
+
+async function egressDetectorIdsEnsure(
+  opts: {
+    client: SearchClient;
+    indexPattern: string;
+    srcIpField: string;
+    bytesField: string;
+    pollIntervalSeconds: number;
+  },
+  listed: Array<{ id: string; raw: Record<string, unknown> }>,
+  log: ReturnType<typeof getLogger>,
+): Promise<EgressDetectorEnsure> {
+  const adopted = pickEgressDetectors(listed, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
+  if (adopted.length > 0) return { ok: true, detectorIds: adopted };
+
+  const createRes = await osTransport(opts.client, 'POST', '/_plugins/_anomaly_detection/detectors', buildCreateDetectorBody(opts));
+  if (createRes.statusCode && createRes.statusCode >= 400) {
+    log.warn({ statusCode: createRes.statusCode, body: createRes.body }, 'OpenSearch AD create detector failed');
+    return {
+      ok: false,
+      result: {
+        ok: false,
+        hasScopedSources: false,
+        warning: 'Could not create Kaytoo OpenSearch anomaly detector (insufficient permissions or validation error).',
+      },
+    };
+  }
+  const created = isRecord(createRes.body) ? createRes.body : {};
+  const newId = getString(created['_id']);
+  if (newId) return { ok: true, detectorIds: [newId] };
+
+  const relistBody = (
+    await osTransport(opts.client, 'POST', '/_plugins/_anomaly_detection/detectors/_search', {
+      query: { term: { name: KAYTOO_OS_DETECTOR_NAME } },
+      size: 10,
+    })
+  ).body;
+  const relist = parseDetectorList(relistBody);
+  return {
+    ok: true,
+    detectorIds: pickEgressDetectors(relist, opts.indexPattern, opts.srcIpField, opts.bytesField, log),
+  };
+}
+
 export async function ensureOpenSearchAnomalyPipeline(opts: {
   client: SearchClient;
   indexPattern: string;
@@ -188,31 +233,9 @@ export async function ensureOpenSearchAnomalyPipeline(opts: {
     }
 
     const listed = parseDetectorList(searchRes.body);
-    let detectorIds = pickEgressDetectors(listed, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
-
-    if (detectorIds.length === 0) {
-      const createRes = await osTransport(opts.client, 'POST', '/_plugins/_anomaly_detection/detectors', buildCreateDetectorBody(opts));
-      if (createRes.statusCode && createRes.statusCode >= 400) {
-        log.warn({ statusCode: createRes.statusCode, body: createRes.body }, 'OpenSearch AD create detector failed');
-        return {
-          ok: false,
-          hasScopedSources: false,
-          warning: 'Could not create Kaytoo OpenSearch anomaly detector (insufficient permissions or validation error).',
-        };
-      }
-      const created = isRecord(createRes.body) ? createRes.body : {};
-      const newId = getString(created['_id']);
-      if (newId) detectorIds = [newId];
-      else {
-        const relist = parseDetectorList(
-          (await osTransport(opts.client, 'POST', '/_plugins/_anomaly_detection/detectors/_search', {
-            query: { term: { name: KAYTOO_OS_DETECTOR_NAME } },
-            size: 10,
-          })).body,
-        );
-        detectorIds = pickEgressDetectors(relist, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
-      }
-    }
+    const ensured = await egressDetectorIdsEnsure(opts, listed, log);
+    if (!ensured.ok) return ensured.result;
+    const { detectorIds } = ensured;
 
     if (detectorIds.length === 0) {
       return { ok: false, hasScopedSources: false, warning: 'OpenSearch AD: no detector id after ensure step.' };

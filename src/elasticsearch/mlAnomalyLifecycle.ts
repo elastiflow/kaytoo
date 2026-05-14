@@ -106,15 +106,65 @@ function pickMatchingJobIds(
     matches.push({ id, kaytoo: id === KAYTOO_ES_JOB_ID ? 0 : 1 });
   }
   if (matches.length === 0) return [];
-  matches.sort((a, b) => a.kaytoo - b.kaytoo || a.id.localeCompare(b.id));
-  const chosen = matches[0]!.id;
-  if (matches.length > 1) {
+  const sorted = [...matches].sort((a, b) => a.kaytoo - b.kaytoo || a.id.localeCompare(b.id));
+  const chosen = sorted[0]!.id;
+  if (sorted.length > 1) {
     log.debug(
-      { chosenMlJobId: chosen, otherMatchingMlJobIds: matches.slice(1).map((m) => m.id) },
+      { chosenMlJobId: chosen, otherMatchingMlJobIds: sorted.slice(1).map((m) => m.id) },
       'Multiple ML jobs matched egress shape; using deterministic tie-break.',
     );
   }
   return [chosen];
+}
+
+async function createKaytooMlJobAndDatafeed(
+  opts: {
+    client: ElasticsearchMlClient;
+    indexPattern: string;
+    srcIpField: string;
+    bytesField: string;
+    pollIntervalSeconds: number;
+  },
+  log: ReturnType<typeof getLogger>,
+): Promise<NativeAnomalyPipelineResult | null> {
+  const span = bucketSpan(opts.pollIntervalSeconds);
+  try {
+    await opts.client.ml.putJob({
+      job_id: KAYTOO_ES_JOB_ID,
+      description: 'Kaytoo-managed flow egress — sum bytes by source IP.',
+      analysis_config: {
+        bucket_span: span,
+        detectors: [{ function: 'sum', field_name: opts.bytesField, over_field_name: opts.srcIpField }],
+      },
+      data_description: { time_field: '@timestamp' },
+    } as never);
+  } catch (e) {
+    if (!resourceAlreadyExists(e)) {
+      log.warn({ ...logErr(e) }, 'Elasticsearch ML putJob failed');
+      return {
+        ok: false,
+        hasScopedSources: false,
+        warning: 'Could not create Kaytoo Elasticsearch ML job (ML unavailable or insufficient permissions).',
+      };
+    }
+  }
+
+  try {
+    await opts.client.ml.putDatafeed({
+      datafeed_id: KAYTOO_ES_DATAFEED_ID,
+      job_id: KAYTOO_ES_JOB_ID,
+      indices: [opts.indexPattern],
+      query: { match_all: {} },
+      scroll_size: 1000,
+    } as never);
+  } catch (e) {
+    if (!resourceAlreadyExists(e)) {
+      log.warn({ ...logErr(e) }, 'Elasticsearch ML putDatafeed failed');
+      return { ok: false, hasScopedSources: false, warning: 'Could not create Kaytoo ML datafeed.' };
+    }
+  }
+
+  return null;
 }
 
 export async function ensureElasticsearchMlAnomalyPipeline(opts: {
@@ -128,48 +178,10 @@ export async function ensureElasticsearchMlAnomalyPipeline(opts: {
   try {
     const list = await opts.client.ml.getJobs({});
     const jobs = isRecord(list) && Array.isArray(list['jobs']) ? list['jobs'] : [];
-    let jobIds = pickMatchingJobIds(jobs, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
-
-    if (jobIds.length === 0) {
-      const span = bucketSpan(opts.pollIntervalSeconds);
-      try {
-        await opts.client.ml.putJob({
-          job_id: KAYTOO_ES_JOB_ID,
-          description: 'Kaytoo-managed flow egress — sum bytes by source IP.',
-          analysis_config: {
-            bucket_span: span,
-            detectors: [{ function: 'sum', field_name: opts.bytesField, over_field_name: opts.srcIpField }],
-          },
-          data_description: { time_field: '@timestamp' },
-        } as never);
-      } catch (e) {
-        if (!resourceAlreadyExists(e)) {
-          log.warn({ ...logErr(e) }, 'Elasticsearch ML putJob failed');
-          return {
-            ok: false,
-            hasScopedSources: false,
-            warning: 'Could not create Kaytoo Elasticsearch ML job (ML unavailable or insufficient permissions).',
-          };
-        }
-      }
-
-      try {
-        await opts.client.ml.putDatafeed({
-          datafeed_id: KAYTOO_ES_DATAFEED_ID,
-          job_id: KAYTOO_ES_JOB_ID,
-          indices: [opts.indexPattern],
-          query: { match_all: {} },
-          scroll_size: 1000,
-        } as never);
-      } catch (e) {
-        if (!resourceAlreadyExists(e)) {
-          log.warn({ ...logErr(e) }, 'Elasticsearch ML putDatafeed failed');
-          return { ok: false, hasScopedSources: false, warning: 'Could not create Kaytoo ML datafeed.' };
-        }
-      }
-
-      jobIds = [KAYTOO_ES_JOB_ID];
-    }
+    const adopted = pickMatchingJobIds(jobs, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
+    const createFailed = adopted.length === 0 ? await createKaytooMlJobAndDatafeed(opts, log) : null;
+    if (createFailed) return createFailed;
+    const jobIds = adopted.length > 0 ? adopted : [KAYTOO_ES_JOB_ID];
 
     for (const jid of jobIds) {
       try {
