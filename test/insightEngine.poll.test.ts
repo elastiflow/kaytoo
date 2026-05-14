@@ -8,6 +8,7 @@ import * as logger from '../src/logging/logger.js';
 const eng = vi.hoisted(() => ({
   fetchAlerting: vi.fn(),
   fetchAd: vi.fn(),
+  ensureNative: vi.fn(),
   queryTopEgressBySource: vi.fn(),
   queryPortscanCandidates: vi.fn(),
   summarizeFindings: vi.fn(),
@@ -68,9 +69,14 @@ function installInsightsLoggerSpy(stub: ReturnType<typeof makeInsightsLoggerStub
   return () => spy.mockRestore();
 }
 
-function resetEngMocks(opts?: { alerting?: MockDetectionFetch; ad?: MockDetectionFetch }) {
+function resetEngMocks(opts?: {
+  alerting?: MockDetectionFetch;
+  ad?: MockDetectionFetch;
+  ensureNative?: { pipeline: { ok: boolean; hasScopedSources: boolean }; esMlClient: null };
+}) {
   eng.fetchAlerting.mockReset();
   eng.fetchAd.mockReset();
+  eng.ensureNative.mockReset();
   eng.queryTopEgressBySource.mockReset();
   eng.queryPortscanCandidates.mockReset();
   eng.summarizeFindings.mockReset();
@@ -79,14 +85,21 @@ function resetEngMocks(opts?: { alerting?: MockDetectionFetch; ad?: MockDetectio
     opts?.alerting ?? { ok: true, findings: [], healthyEmpty: true },
   );
   eng.fetchAd.mockResolvedValue(opts?.ad ?? { ok: true, findings: [], healthyEmpty: true });
+  eng.ensureNative.mockResolvedValue(
+    opts?.ensureNative ?? { pipeline: { ok: false, hasScopedSources: false }, esMlClient: null },
+  );
   eng.queryTopEgressBySource.mockResolvedValue([]);
   eng.queryPortscanCandidates.mockResolvedValue([]);
   eng.summarizeFindings.mockResolvedValue({ post: true, text: 'summary text' });
 }
 
-vi.mock('../src/insights/opensearchDetections.js', () => ({
-  fetchOpenSearchAlertingFindings: (...a: unknown[]) => eng.fetchAlerting(...a) as Promise<unknown>,
-  fetchOpenSearchAdFindings: (...a: unknown[]) => eng.fetchAd(...a) as Promise<unknown>,
+vi.mock('../src/insights/nativeAnomalyPipeline.js', () => ({
+  ensureNativeAnomalyPipeline: (...a: unknown[]) => eng.ensureNative(...a) as Promise<unknown>,
+}));
+
+vi.mock('../src/insights/nativeDetections.js', () => ({
+  fetchNativeAlertFindings: (...a: unknown[]) => eng.fetchAlerting(...a) as Promise<unknown>,
+  fetchNativeAnomalyFindings: (...a: unknown[]) => eng.fetchAd(...a) as Promise<unknown>,
 }));
 
 vi.mock('../src/opensearch/queries/index.js', () => ({
@@ -177,7 +190,11 @@ describe('startInsightEngine', () => {
     vi.useRealTimers();
   });
 
-  it('skips heuristics when OpenSearch alerting and AD are healthy empty', async () => {
+  it('skips heuristics when alerting and AD are healthy empty and native pipeline is ready', async () => {
+    eng.ensureNative.mockResolvedValueOnce({
+      pipeline: { ok: true, hasScopedSources: true },
+      esMlClient: null,
+    });
     const { startInsightEngine } = await import('../src/insights/engine.js');
     const insightSink = mockInsightSink();
     const { stop } = await startInsightEngine({
@@ -185,6 +202,7 @@ describe('startInsightEngine', () => {
       insightSink,
     });
     expect(insightSink.postInsight).not.toHaveBeenCalled();
+    expect(eng.queryTopEgressBySource).not.toHaveBeenCalled();
     stop();
   });
 

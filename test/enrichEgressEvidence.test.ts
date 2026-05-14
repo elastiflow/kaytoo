@@ -31,6 +31,31 @@ describe('enrichEgressFinding', () => {
     expect(client.search).not.toHaveBeenCalled();
   });
 
+  it('enriches opensearch_anomaly like egress when contributingSrcIps present', async () => {
+    const f: Finding = {
+      id: 'os',
+      kind: 'opensearch_anomaly',
+      severity: 'high',
+      title: 't',
+      summary: 's',
+      evidence: { contributingSrcIps: ['10.0.0.1'] },
+      window: { from: '2020-01-01T00:00:00.000Z', to: '2020-01-01T00:15:00.000Z' },
+    };
+    const client = {
+      search: vi.fn().mockResolvedValue({
+        body: {
+          aggregations: {
+            by_dst: { buckets: [{ key: '8.8.8.8', doc_count: 1, dst_bytes: { value: 10 } }] },
+            by_dport: { buckets: [] },
+          },
+        },
+      }),
+    } as unknown as SearchClient;
+    const out = await enrichEgressFinding({ client, index: 'ix', fields, finding: f });
+    expect(client.search).toHaveBeenCalled();
+    expect(out.evidence['topDestinations']).toBeDefined();
+  });
+
   it('merges aggregation results into evidence', async () => {
     const finding: Finding = {
       id: 'egress:10.0.0.1',

@@ -14,11 +14,12 @@ describe('shouldSkipHeuristicPoll', () => {
       healthyEmpty?: boolean;
     };
 
-  it('is true only when both backends report healthy empty', () => {
-    expect(shouldSkipHeuristicPoll(r(true), r(true))).toBe(true);
-    expect(shouldSkipHeuristicPoll(r(true), r(false))).toBe(false);
-    expect(shouldSkipHeuristicPoll(r(false), r(true))).toBe(false);
-    expect(shouldSkipHeuristicPoll(r(false), r(false))).toBe(false);
+  it('is true only when both backends report healthy empty and native anomaly pipeline is ready', () => {
+    expect(shouldSkipHeuristicPoll(r(true), r(true), true)).toBe(true);
+    expect(shouldSkipHeuristicPoll(r(true), r(true), false)).toBe(false);
+    expect(shouldSkipHeuristicPoll(r(true), r(false), true)).toBe(false);
+    expect(shouldSkipHeuristicPoll(r(false), r(true), true)).toBe(false);
+    expect(shouldSkipHeuristicPoll(r(false), r(false), true)).toBe(false);
   });
 
   it('returns false when alerting is not healthy empty', () => {
@@ -26,6 +27,7 @@ describe('shouldSkipHeuristicPoll', () => {
       shouldSkipHeuristicPoll(
         { ok: false, findings: [], warning: 'x' },
         { ok: true, findings: [], healthyEmpty: true },
+        true,
       ),
     ).toBe(false);
   });
@@ -35,6 +37,7 @@ describe('shouldSkipHeuristicPoll', () => {
       shouldSkipHeuristicPoll(
         { ok: true, findings: [], healthyEmpty: true },
         { ok: false, findings: [], warning: 'x' },
+        true,
       ),
     ).toBe(false);
   });
@@ -44,6 +47,7 @@ describe('shouldSkipHeuristicPoll', () => {
       shouldSkipHeuristicPoll(
         { ok: true, findings: [] },
         { ok: true, findings: [] },
+        true,
       ),
     ).toBe(false);
   });

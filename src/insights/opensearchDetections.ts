@@ -3,6 +3,7 @@ import type { Finding } from '../detectors/types.js';
 import { getNumber, getString, isRecord } from '../util/guards.js';
 import { getLogger } from '../logging/logger.js';
 import { parseJsonOrNull } from '../util/json.js';
+import { KAYTOO_OS_RESULT_INDEX } from './nativeAnomalyConstants.js';
 
 export type DetectionFetchResult = {
   ok: boolean;
@@ -13,13 +14,21 @@ export type DetectionFetchResult = {
 };
 
 const ALERT_INDEX_PATTERNS = ['.opensearch-alerting-alerts*', '.opendistro-alerting-alerts*'];
-const AD_RESULT_INDEX_PATTERNS = ['.opensearch-anomaly-results*', '.opendistro-anomaly-results*'];
+const AD_RESULT_INDEX_PATTERNS = [
+  `${KAYTOO_OS_RESULT_INDEX}*`,
+  '.opensearch-anomaly-results*',
+  '.opendistro-anomaly-results*',
+];
 
 const detectionsLog = getLogger({ component: 'insights.opensearchDetections' });
 
 function shardsTotal(body: unknown): number {
-  if (!body || typeof body !== 'object') return 0;
-  const shards = (body as Record<string, unknown>)['_shards'];
+  const normalized =
+    typeof body === 'string'
+      ? parseJsonOrNull({ raw: body, context: 'opensearch.search.body_shards' })
+      : body;
+  if (!normalized || typeof normalized !== 'object') return 0;
+  const shards = (normalized as Record<string, unknown>)['_shards'];
   if (!shards || typeof shards !== 'object') return 0;
   return getNumber((shards as Record<string, unknown>)['total']);
 }
@@ -73,12 +82,22 @@ export async function fetchOpenSearchAlertingFindings(opts: {
 export async function fetchOpenSearchAdFindings(opts: {
   client: SearchClient;
   minutesBack: number;
+  /** Empty array: skip AD (no scoped detectors). Omitted: all detectors (legacy). */
+  detectorIds?: string[];
 }): Promise<DetectionFetchResult> {
+  if (opts.detectorIds && opts.detectorIds.length === 0) {
+    return { ok: true, findings: [], healthyEmpty: false };
+  }
+
+  const detectorFilter =
+    opts.detectorIds && opts.detectorIds.length > 0 ? [{ terms: { detector_id: opts.detectorIds } }] : [];
+
   const query = {
     size: 20,
     query: {
       bool: {
         filter: [
+          ...detectorFilter,
           { range: { execution_end_time: { gte: `now-${opts.minutesBack}m`, lt: 'now' } } },
           { range: { anomaly_grade: { gt: 0 } } },
         ],
@@ -119,7 +138,7 @@ export async function fetchOpenSearchAdFindings(opts: {
 type Hit = { _id?: unknown; _index?: unknown; _source?: unknown };
 
 function getHits(body: unknown): Hit[] {
-  const normalized: unknown =
+  const normalized =
     typeof body === 'string'
       ? parseJsonOrNull({ raw: body, context: 'opensearch.search.body_string', log: detectionsLog })
       : body;
@@ -149,21 +168,52 @@ function alertHitToFinding(hit: Hit): Finding {
   };
 }
 
+function collectEntityValues(src: Record<string, unknown>): string[] {
+  const ent = src['entity'];
+  if (!Array.isArray(ent)) return [];
+  return ent.flatMap((e) => {
+    const v = isRecord(e) ? getString(e['value']) : '';
+    return v ? [v] : [];
+  });
+}
+
+function adWindow(src: Record<string, unknown>): { from: string; to: string } {
+  const from =
+    getString(src['execution_start_time']) ||
+    getString(src['data_start_time']) ||
+    getString(src['start_time']) ||
+    new Date(0).toISOString();
+  const to =
+    getString(src['execution_end_time']) ||
+    getString(src['data_end_time']) ||
+    getString(src['end_time']) ||
+    new Date().toISOString();
+  return { from, to };
+}
+
 function adHitToFinding(hit: Hit): Finding {
   const src = isRecord(hit._source) ? hit._source : {};
   const id = typeof hit._id === 'string' ? hit._id : JSON.stringify({ i: hit._index, id: hit._id });
   const grade = getNumber(src['anomaly_grade']);
   const confidence = getNumber(src['confidence']);
   const severity = grade >= 0.9 ? 'high' : grade >= 0.7 ? 'medium' : 'low';
+  const detectorName = getString(src['detector_name']) || getString(src['name']) || 'detector';
+  const entities = collectEntityValues(src);
+  const title =
+    entities.length > 0
+      ? `Anomaly: ${detectorName} — ${entities.slice(0, 2).join(', ')}${entities.length > 2 ? '…' : ''}`
+      : `Anomaly: ${detectorName} (grade ${grade.toFixed(2)})`;
+  const evidence: Record<string, unknown> = { index: hit._index, id: hit._id, source: src };
+  if (entities.length > 0) evidence['contributingSrcIps'] = entities;
 
   return {
     id: `os-ad:${id}`,
     kind: 'opensearch_anomaly',
     severity,
-    title: `Anomaly detected (grade ${grade.toFixed(2)}, conf ${confidence.toFixed(2)})`,
-    summary: 'OpenSearch Anomaly Detection reported an anomaly.',
-    evidence: { index: hit._index, id: hit._id, source: src },
-    window: { from: new Date(0).toISOString(), to: new Date().toISOString() },
+    title,
+    summary: `OpenSearch AD grade ${grade.toFixed(2)}, confidence ${confidence.toFixed(2)}.`,
+    evidence,
+    window: adWindow(src),
   };
 }
 

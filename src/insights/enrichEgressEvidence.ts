@@ -19,7 +19,8 @@ export async function enrichEgressFinding(opts: {
   finding: Finding;
 }): Promise<Finding> {
   const { finding, client, index, fields } = opts;
-  if (finding.kind !== 'egress_anomaly') return finding;
+  if (finding.kind !== 'egress_anomaly' && finding.kind !== 'opensearch_anomaly' && finding.kind !== 'elasticsearch_ml_anomaly')
+    return finding;
   const raw = finding.evidence['contributingSrcIps'];
   if (!Array.isArray(raw) || raw.some((x) => typeof x !== 'string')) return finding;
   const srcIpList = raw.slice(0, MAX_SRC_TERMS);
@@ -157,7 +158,7 @@ export async function enrichInsightsEgressBatch(opts: {
 }): Promise<Finding[]> {
   return Promise.all(
     opts.findings.map(async (f) => {
-      if (f.kind !== 'egress_anomaly') return f;
+      if (f.kind !== 'egress_anomaly' && f.kind !== 'opensearch_anomaly' && f.kind !== 'elasticsearch_ml_anomaly') return f;
       try {
         return await enrichEgressFinding({
           client: opts.client,

@@ -14,14 +14,14 @@ import type { InsightSink } from '../notify/insightSink.js';
 import { DedupeStore } from '../state/dedupe.js';
 import { thrownMessage } from '../util/guards.js';
 import { windowRelative } from '../util/time.js';
-import {
-  fetchOpenSearchAdFindings,
-  fetchOpenSearchAlertingFindings,
-  type DetectionFetchResult,
-} from './opensearchDetections.js';
+import type { DetectionFetchResult } from './opensearchDetections.js';
 import { selectNovelInsightPostBatch, shouldSkipHeuristicPoll } from './pollUtils.js';
 import { enrichInsightsEgressBatch } from './enrichEgressEvidence.js';
 import { egressInsightWindows } from './egressInsightPolicy.js';
+import { ensureNativeAnomalyPipeline } from './nativeAnomalyPipeline.js';
+import { fetchNativeAlertFindings, fetchNativeAnomalyFindings } from './nativeDetections.js';
+import type { NativeAnomalyPipelineResult } from './nativeAnomalyTypes.js';
+import type { ElasticsearchMlClient } from '../elasticsearch/mlAnomalyLifecycle.js';
 
 function detectionFetchFailure(e: unknown): DetectionFetchResult {
   return { ok: false, findings: [], warning: thrownMessage(e) };
@@ -57,6 +57,23 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     'resolved opensearch field mapping',
   );
 
+  let nativePipeline: NativeAnomalyPipelineResult = { ok: false, hasScopedSources: false };
+  let esMlClient: ElasticsearchMlClient | null = null;
+  try {
+    const ensured = await ensureNativeAnomalyPipeline({
+      backend: config.search.backend,
+      search: config.search,
+      searchClient: client,
+      indexPattern: config.search.indexPattern,
+      fields,
+      pollIntervalSeconds: config.behavior.pollIntervalSeconds,
+    });
+    nativePipeline = ensured.pipeline;
+    esMlClient = ensured.esMlClient;
+  } catch (e) {
+    log.warn({ ...logErr(e) }, 'native anomaly pipeline ensure failed; continuing without scoped native anomaly');
+  }
+
   const llm = createOpenAiCompatClient({
     ...config.llm,
     includeDebugBodies: config.logging.includeDebugBodies,
@@ -65,6 +82,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   const shouldWarnDegraded = createThrottle(10 * 60_000);
   let timer: NodeJS.Timeout | undefined;
   let inFlight = false;
+
+  const nativePipelineReady = nativePipeline.ok === true && nativePipeline.hasScopedSources === true;
 
   const scheduleNext = (): void => {
     if (controller.signal.aborted) return;
@@ -80,23 +99,22 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
 
         const now = new Date();
 
-        const [alerting, ad] =
-          config.search.backend === 'opensearch'
-            ? await Promise.all([
-                fetchOpenSearchAlertingFindings({
-                  client,
-                  now,
-                  minutesBack: config.behavior.pollIntervalSeconds / 60 + 5,
-                }).catch(detectionFetchFailure),
-                fetchOpenSearchAdFindings({
-                  client,
-                  minutesBack: config.behavior.pollIntervalSeconds / 60 + 10,
-                }).catch(detectionFetchFailure),
-              ])
-            : ([{ ok: true, findings: [], healthyEmpty: false } as DetectionFetchResult, { ok: true, findings: [], healthyEmpty: false } as DetectionFetchResult] satisfies [
-                DetectionFetchResult,
-                DetectionFetchResult,
-              ]);
+        const [alerting, ad] = await Promise.all([
+          fetchNativeAlertFindings({
+            backend: config.search.backend,
+            client,
+            now,
+            minutesBack: config.behavior.pollIntervalSeconds / 60 + 5,
+          }).catch(detectionFetchFailure),
+          fetchNativeAnomalyFindings({
+            backend: config.search.backend,
+            searchClient: client,
+            esMlClient,
+            pipeline: nativePipeline,
+            now,
+            minutesBack: config.behavior.pollIntervalSeconds / 60 + 10,
+          }).catch(detectionFetchFailure),
+        ]);
 
         if (!alerting.ok && alerting.warning && shouldWarnDegraded('alerting')) {
           log.warn({ degradedKey: 'alerting', degradedMsg: alerting.warning }, 'insights degraded');
@@ -111,8 +129,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
           return;
         }
 
-        if (shouldSkipHeuristicPoll(alerting, ad)) {
-          log.debug('skipping heuristic detectors: alerting and AD healthy empty');
+        if (shouldSkipHeuristicPoll(alerting, ad, nativePipelineReady)) {
+          log.debug('skipping heuristic detectors: alerting and AD healthy empty with native pipeline ready');
           return;
         }
 
