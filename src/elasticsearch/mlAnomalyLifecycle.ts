@@ -65,7 +65,39 @@ async function startDatafeedsForJob(client: ElasticsearchMlClient, jobId: string
   }
 }
 
-function pickMatchingJobIds(jobs: unknown[], indexPattern: string, srcIpField: string, bytesField: string): string[] {
+function elasticsearchErrorType(e: unknown): string {
+  if (!isRecord(e)) return '';
+  const meta = e['meta'];
+  if (isRecord(meta)) {
+    const mb = meta['body'];
+    if (isRecord(mb)) {
+      const er = mb['error'];
+      if (isRecord(er)) {
+        const t = getString(er['type']);
+        if (t) return t;
+      }
+    }
+  }
+  const body = e['body'];
+  if (isRecord(body)) {
+    const er = body['error'];
+    if (isRecord(er)) return getString(er['type']);
+  }
+  return '';
+}
+
+function resourceAlreadyExists(e: unknown): boolean {
+  if (elasticsearchErrorType(e) === 'resource_already_exists_exception') return true;
+  return String(e).includes('resource_already_exists_exception');
+}
+
+function pickMatchingJobIds(
+  jobs: unknown[],
+  indexPattern: string,
+  srcIpField: string,
+  bytesField: string,
+  log: ReturnType<typeof getLogger>,
+): string[] {
   const matches: { id: string; kaytoo: number }[] = [];
   for (const j of jobs) {
     if (!isRecord(j)) continue;
@@ -73,12 +105,16 @@ function pickMatchingJobIds(jobs: unknown[], indexPattern: string, srcIpField: s
     if (!id || !mlJobMatchesEgressShape(j, indexPattern, srcIpField, bytesField)) continue;
     matches.push({ id, kaytoo: id === KAYTOO_ES_JOB_ID ? 0 : 1 });
   }
+  if (matches.length === 0) return [];
   matches.sort((a, b) => a.kaytoo - b.kaytoo || a.id.localeCompare(b.id));
-  return matches.length ? [matches[0]!.id] : [];
-}
-
-function resourceAlreadyExists(e: unknown): boolean {
-  return String(e).includes('resource_already_exists_exception');
+  const chosen = matches[0]!.id;
+  if (matches.length > 1) {
+    log.debug(
+      { chosenMlJobId: chosen, otherMatchingMlJobIds: matches.slice(1).map((m) => m.id) },
+      'Multiple ML jobs matched egress shape; using deterministic tie-break.',
+    );
+  }
+  return [chosen];
 }
 
 export async function ensureElasticsearchMlAnomalyPipeline(opts: {
@@ -92,7 +128,7 @@ export async function ensureElasticsearchMlAnomalyPipeline(opts: {
   try {
     const list = await opts.client.ml.getJobs({});
     const jobs = isRecord(list) && Array.isArray(list['jobs']) ? list['jobs'] : [];
-    let jobIds = pickMatchingJobIds(jobs, opts.indexPattern, opts.srcIpField, opts.bytesField);
+    let jobIds = pickMatchingJobIds(jobs, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
 
     if (jobIds.length === 0) {
       const span = bucketSpan(opts.pollIntervalSeconds);

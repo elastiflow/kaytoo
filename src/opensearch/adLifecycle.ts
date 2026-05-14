@@ -53,6 +53,7 @@ function categoryIncludes(det: Record<string, unknown>, srcIpField: string): boo
 }
 
 function featureSumsBytes(det: Record<string, unknown>, bytesField: string): boolean {
+  // Heuristic: not a full aggregation AST; enough to match typical Kaytoo/vendor egress detectors.
   const attrs = det['feature_attributes'];
   if (!Array.isArray(attrs)) return false;
   for (const a of attrs) {
@@ -116,13 +117,21 @@ function pickEgressDetectors(
   indexPattern: string,
   srcIpField: string,
   bytesField: string,
+  log: ReturnType<typeof getLogger>,
 ): string[] {
   const matches = detectors.filter((d) => detectorMatchesEgressShape(d.raw, indexPattern, srcIpField, bytesField));
   if (matches.length === 0) return [];
-  const first = [...matches].sort(
+  const sorted = [...matches].sort(
     (a, b) => kaytooNameRank(a.raw) - kaytooNameRank(b.raw) || a.id.localeCompare(b.id),
-  )[0]!;
-  return [first.id];
+  );
+  const chosen = sorted[0]!;
+  if (sorted.length > 1) {
+    log.debug(
+      { chosenDetectorId: chosen.id, otherMatchingDetectorIds: sorted.slice(1).map((d) => d.id) },
+      'Multiple AD detectors matched egress shape; using deterministic tie-break.',
+    );
+  }
+  return [chosen.id];
 }
 
 function buildCreateDetectorBody(opts: {
@@ -179,7 +188,7 @@ export async function ensureOpenSearchAnomalyPipeline(opts: {
     }
 
     const listed = parseDetectorList(searchRes.body);
-    let detectorIds = pickEgressDetectors(listed, opts.indexPattern, opts.srcIpField, opts.bytesField);
+    let detectorIds = pickEgressDetectors(listed, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
 
     if (detectorIds.length === 0) {
       const createRes = await osTransport(opts.client, 'POST', '/_plugins/_anomaly_detection/detectors', buildCreateDetectorBody(opts));
@@ -201,7 +210,7 @@ export async function ensureOpenSearchAnomalyPipeline(opts: {
             size: 10,
           })).body,
         );
-        detectorIds = pickEgressDetectors(relist, opts.indexPattern, opts.srcIpField, opts.bytesField);
+        detectorIds = pickEgressDetectors(relist, opts.indexPattern, opts.srcIpField, opts.bytesField, log);
       }
     }
 

@@ -37,6 +37,8 @@ describe('fetchElasticsearchMlAnomalyFindings', () => {
     expect(r.findings[0]!.kind).toBe('elasticsearch_ml_anomaly');
     expect(r.findings[0]!.severity).toBe('high');
     expect(r.findings[0]!.evidence['contributingSrcIps']).toEqual(['10.0.0.1']);
+    expect(r.findings[0]!.window.from).toBe('2023-11-14T22:13:20.000Z');
+    expect(r.findings[0]!.id).toContain('2023-11-14T22:13:20.000Z');
   });
 
   it('returns ok false when getRecords throws', async () => {

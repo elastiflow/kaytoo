@@ -25,7 +25,7 @@ const detectionsLog = getLogger({ component: 'insights.opensearchDetections' });
 function shardsTotal(body: unknown): number {
   const normalized =
     typeof body === 'string'
-      ? parseJsonOrNull({ raw: body, context: 'opensearch.search.body_shards' })
+      ? parseJsonOrNull({ raw: body, context: 'opensearch.search.body_shards', log: detectionsLog })
       : body;
   if (!normalized || typeof normalized !== 'object') return 0;
   const shards = (normalized as Record<string, unknown>)['_shards'];

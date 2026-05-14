@@ -3,13 +3,21 @@ import type { ElasticsearchMlClient } from '../elasticsearch/mlAnomalyLifecycle.
 import type { DetectionFetchResult } from './opensearchDetections.js';
 import { getNumber, getString, isRecord } from '../util/guards.js';
 
+function mlRecordTimestampIso(rec: Record<string, unknown>): string {
+  const v = rec['timestamp'];
+  if (typeof v === 'number' && Number.isFinite(v)) return new Date(v).toISOString();
+  const s = getString(v);
+  if (!s) return '';
+  const ms = Date.parse(s);
+  return Number.isNaN(ms) ? s : new Date(ms).toISOString();
+}
+
 function recordToFinding(jobId: string, rec: Record<string, unknown>): Finding {
   const score = Math.max(getNumber(rec['record_score']), getNumber(rec['initial_record_score']));
   const severity = score >= 90 ? 'high' : score >= 50 ? 'medium' : 'low';
   const over = getString(rec['over_field_value']);
-  const ts = getString(rec['timestamp']);
-  const id = `es-ml:${jobId}:${ts}:${over}:${score.toFixed(2)}`;
-  const t = ts || new Date(0).toISOString();
+  const t = mlRecordTimestampIso(rec) || new Date(0).toISOString();
+  const id = `es-ml:${jobId}:${t}:${over}:${score.toFixed(2)}`;
   const evidence: Record<string, unknown> = { jobId, source: rec };
   if (over) evidence['contributingSrcIps'] = [over];
   return {

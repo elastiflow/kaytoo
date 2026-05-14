@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as logging from '../src/logging/logger.js';
 import { detectorMatchesEgressShape, ensureOpenSearchAnomalyPipeline } from '../src/opensearch/adLifecycle.js';
 
 describe('detectorMatchesEgressShape', () => {
@@ -314,6 +315,52 @@ describe('ensureOpenSearchAnomalyPipeline', () => {
       pollIntervalSeconds: 300,
     });
     expect(r.opensearch?.detectorIds).toEqual(['kay']);
+  });
+
+  it('logs debug when multiple AD detectors match egress shape', async () => {
+    const debug = vi.fn();
+    vi.spyOn(logging, 'getLogger').mockReturnValue({
+      debug,
+      warn: vi.fn(),
+      info: vi.fn(),
+      error: vi.fn(),
+      fatal: vi.fn(),
+      trace: vi.fn(),
+      child: vi.fn(),
+    } as never);
+    const shaped = {
+      time_field: '@timestamp',
+      indices: ['flow-*'],
+      category_field: ['flow.client.ip.addr'],
+      feature_attributes: [{ aggregation_query: { k: { sum: { field: 'flow.bytes' } } } }],
+    };
+    const transport = vi
+      .fn()
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        body: {
+          hits: {
+            hits: [
+              { _id: 'z-det', _source: { name: 'z', ...shaped } },
+              { _id: 'a-det', _source: { name: 'a', ...shaped } },
+            ],
+          },
+        },
+      })
+      .mockResolvedValue({ statusCode: 200, body: {} });
+    const r = await ensureOpenSearchAnomalyPipeline({
+      client: clientWithTransport(transport),
+      indexPattern: 'flow-*',
+      srcIpField: 'flow.client.ip.addr',
+      bytesField: 'flow.bytes',
+      pollIntervalSeconds: 300,
+    });
+    expect(r.opensearch?.detectorIds).toEqual(['a-det']);
+    expect(debug).toHaveBeenCalledWith(
+      expect.objectContaining({ chosenDetectorId: 'a-det', otherMatchingDetectorIds: ['z-det'] }),
+      expect.stringMatching(/tie-break/i),
+    );
+    vi.restoreAllMocks();
   });
 
   it('returns not ok when create omits id and relist finds no detector', async () => {
