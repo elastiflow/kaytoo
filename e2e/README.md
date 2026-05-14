@@ -84,7 +84,7 @@ export KUBECONFIG="$(pwd)/e2e/.generated/kubeconfig-kind-kaytoo-e2e"
 npm run e2e:verify
 ```
 
-`verify` starts a temporary chat port-forward if needed.
+`verify` starts a temporary chat port-forward if needed. It also checks **OpenSearch Anomaly Detection** (`POST .../_plugins/_anomaly_detection/detectors/_search` returns 200), asserts the **Kaytoo flow egress** detector appears in that listing (native seed/adopt), confirms Kaytoo did **not** log AD plugin `404`, waits one poll window, then requires one of: structured log **`insight_post`** (console sink), **`posted findings`**, or **`skipping heuristic detectors`** (native pipeline idle + healthy empty). With `kaytooOutput: console` in e2e values, proactive text appears as JSON logs (`insightText` on `insight_post`), not Slack/Matrix. If logs contain **`Anomaly`**, verify prints an optional note (typical when a graded `opensearch_anomaly` finding was summarized).
 
 ## Host Kaytoo (optional)
 
