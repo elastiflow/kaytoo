@@ -378,5 +378,33 @@ describe('ensureOpenSearchAnomalyPipeline', () => {
     });
     expect(r.ok).toBe(false);
     expect(r.warning).toMatch(/no detector id/i);
+    expect(transport).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns not ok when create omits id and relist has no egress-shaped detectors', async () => {
+    const shapedWrongIndex = {
+      name: 'Kaytoo flow egress by source',
+      time_field: '@timestamp',
+      indices: ['other-index-*'],
+      category_field: ['flow.client.ip.addr'],
+      feature_attributes: [{ aggregation_query: { k: { sum: { field: 'flow.bytes' } } } }],
+    };
+    const transport = vi
+      .fn()
+      .mockResolvedValueOnce({ statusCode: 200, body: { hits: { hits: [] } } })
+      .mockResolvedValueOnce({ statusCode: 201, body: {} })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        body: { hits: { hits: [{ _id: 'rel-orphan', _source: shapedWrongIndex }] } },
+      });
+    const r = await ensureOpenSearchAnomalyPipeline({
+      client: clientWithTransport(transport),
+      indexPattern: 'flow-*',
+      srcIpField: 'flow.client.ip.addr',
+      bytesField: 'flow.bytes',
+      pollIntervalSeconds: 300,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.warning).toMatch(/no detector id/i);
   });
 });

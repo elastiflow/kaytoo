@@ -41,6 +41,21 @@ describe('fetchElasticsearchMlAnomalyFindings', () => {
     expect(r.findings[0]!.id).toContain('2023-11-14T22:13:20.000Z');
   });
 
+  it('treats small numeric timestamp as epoch seconds', async () => {
+    const ml = {
+      getRecords: vi.fn().mockResolvedValue({
+        records: [{ record_score: 50, over_field_value: '10.0.0.1', timestamp: 1_700_000_000 }],
+      }),
+    };
+    const r = await fetchElasticsearchMlAnomalyFindings({
+      client: { ml } as never,
+      jobIds: ['j'],
+      now: new Date('2024-01-15T12:00:00Z'),
+      minutesBack: 60,
+    });
+    expect(r.findings[0]!.window.from).toBe('2023-11-14T22:13:20.000Z');
+  });
+
   it('returns ok false when getRecords throws', async () => {
     const ml = { getRecords: vi.fn().mockRejectedValue(new Error('ml down')) };
     const r = await fetchElasticsearchMlAnomalyFindings({

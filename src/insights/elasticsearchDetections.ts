@@ -5,7 +5,11 @@ import { getNumber, getString, isRecord } from '../util/guards.js';
 
 function mlRecordTimestampIso(rec: Record<string, unknown>): string {
   const v = rec['timestamp'];
-  if (typeof v === 'number' && Number.isFinite(v)) return new Date(v).toISOString();
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    // ML APIs normally return epoch ms; values below ~1e12 are treated as seconds.
+    const ms = v < 1e12 ? v * 1000 : v;
+    return new Date(ms).toISOString();
+  }
   const s = getString(v);
   if (!s) return '';
   const ms = Date.parse(s);
