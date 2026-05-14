@@ -1,8 +1,13 @@
 import type { Finding } from '../detectors/types.js';
 import type { DetectionFetchResult } from './opensearchDetections.js';
 
-export function shouldSkipHeuristicPoll(alerting: DetectionFetchResult, ad: DetectionFetchResult): boolean {
-  return alerting.healthyEmpty === true && ad.healthyEmpty === true;
+export function shouldSkipHeuristicPoll(
+  alerting: DetectionFetchResult,
+  ad: DetectionFetchResult,
+  nativePipelineReady: boolean,
+): boolean {
+  if (!(alerting.healthyEmpty === true && ad.healthyEmpty === true)) return false;
+  return nativePipelineReady === true;
 }
 
 export function findingSeverityRank(s: Finding['severity']): number {

@@ -272,6 +272,47 @@ cmd_verify() {
   e2e_log "expect topTalkersByBytes in logs"
   logs_grep 'agent tool finished' || { kubectl -n "$ns" logs "$pod" -c kaytoo --tail=120; exit 1; }
   logs_grep '"tool":"topTalkersByBytes"' || { kubectl -n "$ns" logs "$pod" -c kaytoo --tail=120; exit 1; }
+
+  e2e_log "OpenSearch Anomaly Detection API (expect HTTP 200, not 404)"
+  local ad_http os_base="${OS_URL%/}"
+  ad_http="$(curl -k -sS -o /dev/null -w '%{http_code}' -u "${OS_USER}:${OS_PASS}" \
+    -X POST "${os_base}/_plugins/_anomaly_detection/detectors/_search" \
+    -H 'Content-Type: application/json' \
+    -d '{"query":{"match_all":{}},"size":1}' 2>/dev/null || echo "000")"
+  [[ "$ad_http" == "200" ]] || e2e_die "AD detectors/_search returned HTTP ${ad_http} (plugin missing or auth?)"
+
+  e2e_log "OpenSearch AD: expect Kaytoo egress detector in list (seed/adopt)"
+  local ad_json
+  ad_json="$(curl -k -sS -u "${OS_USER}:${OS_PASS}" \
+    -X POST "${os_base}/_plugins/_anomaly_detection/detectors/_search" \
+    -H 'Content-Type: application/json' \
+    -d '{"query":{"match_all":{}},"size":50}' 2>/dev/null || true)"
+  echo "$ad_json" | grep -q 'Kaytoo flow egress' ||
+    e2e_die "AD detector list missing Kaytoo egress detector (native pipeline seed/adopt)"
+
+  e2e_log "Kaytoo logs: native AD must not report plugin 404"
+  if logs_grep 'OpenSearch Anomaly Detection plugin not available (404)' 25000; then
+    kubectl -n "$ns" logs "$pod" -c kaytoo --tail=200 >&2
+    e2e_die "Kaytoo logged AD plugin unavailable (404)"
+  fi
+
+  e2e_log "wait for scheduled insight poll (e2e uses pollIntervalSeconds=15)"
+  sleep 20
+
+  e2e_log "Kaytoo logs: console insight path (insight_post, posted findings, or heuristic skip when native idle)"
+  if logs_grep 'insight_post' 25000 || logs_grep '"msg":"posted findings"' 25000 || logs_grep 'skipping heuristic detectors' 25000; then
+    e2e_log "insight engine activity ok (console insight_post, posted findings, or native-idle heuristic skip)"
+  else
+    kubectl -n "$ns" logs "$pod" -c kaytoo --tail=200 >&2
+    e2e_die "no insight_post, posted findings, or heuristic-skip in recent logs (see tail above)"
+  fi
+
+  if logs_grep 'Anomaly' 25000; then
+    e2e_log "optional: Anomaly wording in logs (likely opensearch_anomaly insight path)"
+  else
+    e2e_log "optional: no Anomaly string in recent logs (normal if no graded AD hits this window)"
+  fi
+
   e2e_log "OK verify"
 }
 
