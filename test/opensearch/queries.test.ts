@@ -505,6 +505,10 @@ describe('opensearch helpers', () => {
       size: 10,
     });
     expect(rare).toEqual([{ dstIp: '9.9.9.9', score: 12, docCount: 3, bytes: 100 }]);
+    const rareBody = client.search.mock.calls.at(-1)![0].body as {
+      query: { bool: { filter: unknown[] } };
+    };
+    expect(JSON.stringify(rareBody.query.bool.filter)).toContain('must_not');
   });
 
   it('queryTopEgressBySource maps top_src_display when srcDisplayNameField is set', async () => {

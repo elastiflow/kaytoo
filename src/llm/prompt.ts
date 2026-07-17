@@ -8,7 +8,8 @@ export function buildSlackSummaryPrompt(findings: Finding[]): ChatMessage[] {
     'Decide whether a network engineer would want a proactive chat note (noise vs actionable).',
     'If not worth posting, set post to false with empty text. If posting: concise copy, no jargon, no false certainty, short next checks.',
     'Prefer structured evidence (comparisonFrame, volumeSummary, bytesHuman, window, topDestinations); prefer Name (IP) over raw addresses.',
-    'Decline ordinary streaming/CDN/browsing volume. Do not frame volume as exfiltration or urge isolation.',
+    'Decline ordinary streaming/CDN/browsing volume. Prefer rare destinations and port-scan evidence over raw byte spikes.',
+    'Do not frame volume as exfiltration or urge isolation.',
     'Output MUST be valid JSON: {"post":true|false,"text":"..."} with no extra keys.',
   ];
   const system: ChatMessage = {
