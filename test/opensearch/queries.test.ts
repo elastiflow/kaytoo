@@ -548,7 +548,7 @@ describe('opensearch helpers', () => {
     expect(rows).toEqual([{ srcIp: '1.1.1.1', bytes: 100, srcDisplayName: 'pod-x' }]);
   });
 
-  it('queryTopEgressBySource externalOnly adds destination filter', async () => {
+  it('queryTopEgressBySource filters to external destinations', async () => {
     const { queryTopEgressBySource } = await import('../../src/opensearch/queries/index.js');
     const client = {
       search: vi.fn().mockResolvedValue({ body: { aggregations: { by_src: { buckets: [] } } } }),
@@ -567,7 +567,6 @@ describe('opensearch helpers', () => {
       fields,
       window: { from: 'a', to: 'b' },
       size: 5,
-      externalOnly: true,
     });
     const body = client.search.mock.calls[0]![0].body as {
       query: { bool: { filter: unknown[] } };

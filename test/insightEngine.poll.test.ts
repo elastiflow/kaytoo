@@ -218,11 +218,6 @@ describe('startInsightEngine', () => {
     await startInsightEngine({ config: elasticConsoleConfig(), insightSink });
 
     expect(eng.queryTopEgressBySource).toHaveBeenCalled();
-    expect(
-      eng.queryTopEgressBySource.mock.calls.every(
-        (c) => (c[0] as { externalOnly?: boolean }).externalOnly === true,
-      ),
-    ).toBe(true);
     expect(insightSink.postInsight).not.toHaveBeenCalled();
   });
 

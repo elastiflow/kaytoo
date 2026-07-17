@@ -132,7 +132,6 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
             fields,
             window: primaryCurrentWindow,
             size: 25,
-            externalOnly: true,
           }),
           queryTopEgressBySource({
             client,
@@ -140,7 +139,6 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
             fields,
             window: spikeCurrentWindow,
             size: 25,
-            externalOnly: true,
           }),
           queryTopEgressBySource({
             client,
@@ -148,7 +146,6 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
             fields,
             window: baselineWindow,
             size: 200,
-            externalOnly: true,
           }),
           queryPortscanCandidates({
             client,

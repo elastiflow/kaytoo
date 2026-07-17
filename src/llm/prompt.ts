@@ -5,8 +5,8 @@ import type { ChatMessage } from './types.js';
 export function buildSlackSummaryPrompt(findings: Finding[]): ChatMessage[] {
   const systemLines = [
     `${KAYTOO_SLACK_SUMMARY_IDENTITY}.`,
-    'Decide if a network engineer would want a proactive chat note (noise vs actionable).',
-    'If not worth posting, set post false with empty text. If posting: concise, no jargon, no false certainty, short next checks.',
+    'Decide whether a network engineer would want a proactive chat note (noise vs actionable).',
+    'If not worth posting, set post to false with empty text. If posting: concise copy, no jargon, no false certainty, short next checks.',
     'Prefer structured evidence (comparisonFrame, volumeSummary, bytesHuman, window, topDestinations); prefer Name (IP) over raw addresses.',
     'Decline ordinary streaming/CDN/browsing volume. Do not frame volume as exfiltration or urge isolation.',
     'Output MUST be valid JSON: {"post":true|false,"text":"..."} with no extra keys.',

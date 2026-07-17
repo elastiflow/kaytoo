@@ -5,14 +5,13 @@ import { getBuckets, timedSearch, toNumber, toString, topTermsLabelFromBucket, t
 
 export type EgressAggRow = { srcIp: string; bytes: number; srcDisplayName?: string };
 
+/** Top sources by bytes to external (non-RFC1918/CGNAT) destinations. */
 export async function queryTopEgressBySource(opts: {
   client: SearchClient;
   index: string;
   fields: FieldPreference;
   window: { from: string; to: string };
   size: number;
-  /** When true, only count bytes to non-RFC1918/CGNAT destinations. */
-  externalOnly?: boolean;
 }): Promise<EgressAggRow[]> {
   const subField = opts.fields.srcDisplayNameField;
   const bySrc = subField
@@ -31,24 +30,18 @@ export async function queryTopEgressBySource(opts: {
         aggs: { bytes: { sum: { field: opts.fields.bytesField } } },
       };
 
-  const timeRange = {
-    range: {
-      '@timestamp': { gte: opts.window.from, lt: opts.window.to },
-    },
-  };
-  const query = opts.externalOnly
-    ? {
-        bool: {
-          filter: [timeRange, externalDestinationIpBool(opts.fields.dstIpField)],
-        },
-      }
-    : timeRange;
-
   const res = await timedSearch('queryTopEgressBySource', opts.client, {
     index: opts.index,
     size: 0,
     body: {
-      query,
+      query: {
+        bool: {
+          filter: [
+            { range: { '@timestamp': { gte: opts.window.from, lt: opts.window.to } } },
+            externalDestinationIpBool(opts.fields.dstIpField),
+          ],
+        },
+      },
       aggs: { by_src: bySrc },
     },
   });
