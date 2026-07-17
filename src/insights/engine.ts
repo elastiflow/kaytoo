@@ -221,7 +221,6 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
           { findingId: f.id, reason: gate.reason, benignRatio: gate.benignRatio },
           'suppressed benign volume insight',
         );
-        dedupe.mark(f.id);
         continue;
       }
       toSummarize.push(f);

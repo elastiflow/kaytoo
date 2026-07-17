@@ -94,6 +94,16 @@ describe('getConfig', () => {
     expect(cfg.thresholds.portscanMinPackets).toBe(400);
   });
 
+  it('treats blank KAYTOO_EGRESS_* as unset defaults', () => {
+    const cfg = getConfig({
+      ...baseEnv,
+      KAYTOO_EGRESS_MULTIPLIER: '  ',
+      KAYTOO_EGRESS_MIN_BYTES: '',
+    });
+    expect(cfg.thresholds.egressMultiplier).toBe(3);
+    expect(cfg.thresholds.egressMinBytes).toBe(50_000_000);
+  });
+
   it('throws a readable error when required vars are missing', () => {
     expect(() => getConfig({})).toThrowError(/Invalid configuration:/);
   });

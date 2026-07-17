@@ -59,6 +59,11 @@ describe('enrichEgressFinding', () => {
     const out = await enrichEgressFinding({ client, index: 'ix', fields, finding });
 
     expect(client.search).toHaveBeenCalledTimes(1);
+    const searchArg = (client.search as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+      body: { query: { bool: { filter: unknown[] } } };
+    };
+    expect(searchArg.body.query.bool.filter).toHaveLength(3);
+    expect(JSON.stringify(searchArg.body.query.bool.filter[2])).toContain('must_not');
     expect(out.evidence['topDestinations']).toEqual([
       { dstIp: '8.8.8.8', dstEndpointLabel: '8.8.8.8', bytes: 99, flows: 2 },
     ]);
