@@ -84,14 +84,10 @@ describe('getConfig', () => {
       KAYTOO_POLL_INTERVAL_SECONDS: '60',
       KAYTOO_EGRESS_MULTIPLIER: '5',
       KAYTOO_EGRESS_MIN_BYTES: '10000000',
-      KAYTOO_PORTSCAN_DISTINCT_DST_PORTS: '80',
-      KAYTOO_PORTSCAN_MIN_PACKETS: '400',
     });
     expect(cfg.behavior.pollIntervalSeconds).toBe(60);
     expect(cfg.thresholds.egressMultiplier).toBe(5);
     expect(cfg.thresholds.egressMinBytes).toBe(10_000_000);
-    expect(cfg.thresholds.portscanDistinctDstPorts).toBe(80);
-    expect(cfg.thresholds.portscanMinPackets).toBe(400);
   });
 
   it('treats blank KAYTOO_EGRESS_* as unset defaults', () => {

@@ -277,13 +277,10 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, opts?: GetConfig
     },
     behavior: {
       pollIntervalSeconds: optStr(env.KAYTOO_POLL_INTERVAL_SECONDS),
-      dedupeTtlSeconds: optStr(env.KAYTOO_DEDUPE_TTL_SECONDS),
     },
     thresholds: {
       egressMultiplier: optStr(env.KAYTOO_EGRESS_MULTIPLIER),
       egressMinBytes: optStr(env.KAYTOO_EGRESS_MIN_BYTES),
-      portscanDistinctDstPorts: optStr(env.KAYTOO_PORTSCAN_DISTINCT_DST_PORTS),
-      portscanMinPackets: optStr(env.KAYTOO_PORTSCAN_MIN_PACKETS),
     },
     logging: { level: env.LOG_LEVEL },
     conversation: {},

@@ -20,7 +20,6 @@ import {
   type DetectionFetchResult,
 } from './opensearchDetections.js';
 import { selectNovelInsightPostBatch, shouldSkipHeuristicPoll } from './pollUtils.js';
-import { shouldSuppressVolumeInsight } from './benignDestinationGate.js';
 import { enrichInsightsEgressBatch } from './enrichEgressEvidence.js';
 import { egressInsightWindows } from './egressInsightPolicy.js';
 
@@ -206,29 +205,13 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     const toPost = selectNovelInsightPostBatch(findings, dedupe);
     if (toPost.length === 0) return;
 
-    const enriched = await enrichInsightsEgressBatch({
+    const toSummarize = await enrichInsightsEgressBatch({
       client,
       index: config.search.indexPattern,
       fields,
       findings: toPost,
       log,
     });
-    const toSummarize: Finding[] = [];
-    for (const f of enriched) {
-      const gate = shouldSuppressVolumeInsight(f);
-      if (gate.suppress) {
-        log.debug(
-          { findingId: f.id, reason: gate.reason, benignRatio: gate.benignRatio },
-          'suppressed benign volume insight',
-        );
-        continue;
-      }
-      toSummarize.push(f);
-    }
-    if (toSummarize.length === 0) {
-      log.debug({ findingCount: toPost.length }, 'all insights suppressed as benign volume');
-      return;
-    }
 
     const summary = await llm.summarizeFindings({ channelStyle: 'slack', findings: toSummarize }).catch((e) => {
       log.warn({ ...logErr(e), findingCount: toPost.length }, 'LLM summarization failed; skipping proactive post');
@@ -251,8 +234,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       log.warn({ findingCount: toPost.length, output: config.output }, 'post findings failed');
       return;
     }
-    toSummarize.forEach((f) => dedupe.mark(f.id));
-    log.info({ findingCount: toSummarize.length, output: config.output }, 'posted findings');
+    toPost.forEach((f) => dedupe.mark(f.id));
+    log.info({ findingCount: toPost.length, output: config.output }, 'posted findings');
   }
 
   await pollOnce();

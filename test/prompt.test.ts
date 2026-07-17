@@ -17,8 +17,8 @@ describe('buildSlackSummaryPrompt', () => {
 
     expect(msgs.length).toBe(2);
     expect(msgs[0]?.role).toBe('system');
-    expect(msgs[0]?.content).toMatch(/observability, not incident response/i);
-    expect(msgs[0]?.content).toMatch(/never call it exfiltration/i);
+    expect(msgs[0]?.content).toMatch(/Decline ordinary streaming/i);
+    expect(msgs[0]?.content).toMatch(/exfiltration/i);
     expect(msgs[1]?.role).toBe('user');
     const payload = JSON.parse(msgs[1]?.content ?? '');
     expect(payload.findings).toHaveLength(1);
