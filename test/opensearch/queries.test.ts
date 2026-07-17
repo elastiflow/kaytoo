@@ -505,6 +505,10 @@ describe('opensearch helpers', () => {
       size: 10,
     });
     expect(rare).toEqual([{ dstIp: '9.9.9.9', score: 12, docCount: 3, bytes: 100 }]);
+    const rareBody = client.search.mock.calls.at(-1)![0].body as {
+      query: { bool: { filter: unknown[] } };
+    };
+    expect(JSON.stringify(rareBody.query.bool.filter)).toContain('must_not');
   });
 
   it('queryTopEgressBySource maps top_src_display when srcDisplayNameField is set', async () => {
@@ -546,6 +550,33 @@ describe('opensearch helpers', () => {
       size: 5,
     });
     expect(rows).toEqual([{ srcIp: '1.1.1.1', bytes: 100, srcDisplayName: 'pod-x' }]);
+  });
+
+  it('queryTopEgressBySource filters to external destinations', async () => {
+    const { queryTopEgressBySource } = await import('../../src/opensearch/queries/index.js');
+    const client = {
+      search: vi.fn().mockResolvedValue({ body: { aggregations: { by_src: { buckets: [] } } } }),
+    };
+    const fields = {
+      bytesField: 'b',
+      srcIpField: 's',
+      dstIpField: 'd',
+      srcPortField: 'sp',
+      dstPortField: 'dp',
+      protoField: 'p',
+    };
+    await queryTopEgressBySource({
+      client: client as never,
+      index: 'i',
+      fields,
+      window: { from: 'a', to: 'b' },
+      size: 5,
+    });
+    const body = client.search.mock.calls[0]![0].body as {
+      query: { bool: { filter: unknown[] } };
+    };
+    expect(body.query.bool.filter).toHaveLength(2);
+    expect(JSON.stringify(body.query.bool.filter[1])).toContain('must_not');
   });
 
   it('queryTopEgressBySource returns [] when aggregation shape is missing', async () => {

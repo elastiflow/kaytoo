@@ -1,6 +1,7 @@
 import type { Logger } from 'pino';
 import type { Finding } from '../detectors/types.js';
 import type { FieldPreference } from '../opensearch/fieldCaps.js';
+import { externalDestinationIpBool } from '../opensearch/queries/destinationIp.js';
 import { getBuckets, timedSearch, toNumber, toString, topTermsLabelFromBucket, type AggValue } from '../opensearch/queries/shared.js';
 import type { SearchClient } from '../search/types.js';
 import { logErr } from '../logging/logger.js';
@@ -86,6 +87,7 @@ export async function enrichEgressFinding(opts: {
                 minimum_should_match: 1,
               },
             },
+            externalDestinationIpBool(fields.dstIpField),
           ],
         },
       },

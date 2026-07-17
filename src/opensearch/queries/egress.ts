@@ -1,9 +1,11 @@
 import type { FieldPreference } from '../fieldCaps.js';
 import type { SearchClient } from '../../search/types.js';
+import { externalDestinationIpBool } from './destinationIp.js';
 import { getBuckets, timedSearch, toNumber, toString, topTermsLabelFromBucket, type AggValue } from './shared.js';
 
 export type EgressAggRow = { srcIp: string; bytes: number; srcDisplayName?: string };
 
+/** Top sources by bytes to external (non-RFC1918/CGNAT) destinations. */
 export async function queryTopEgressBySource(opts: {
   client: SearchClient;
   index: string;
@@ -33,8 +35,11 @@ export async function queryTopEgressBySource(opts: {
     size: 0,
     body: {
       query: {
-        range: {
-          '@timestamp': { gte: opts.window.from, lt: opts.window.to },
+        bool: {
+          filter: [
+            { range: { '@timestamp': { gte: opts.window.from, lt: opts.window.to } } },
+            externalDestinationIpBool(opts.fields.dstIpField),
+          ],
         },
       },
       aggs: { by_src: bySrc },

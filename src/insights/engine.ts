@@ -5,9 +5,9 @@ import { runWithLogContextAsync } from '../logging/context.js';
 import { createThrottle } from '../logging/throttle.js';
 import { createSearchClient } from '../search/client.js';
 import { waitForOpenSearchFieldMapping } from '../opensearch/waitForFieldMapping.js';
-import { queryPortscanCandidates, queryTopEgressBySource } from '../opensearch/queries/index.js';
-import { detectEgressAnomalies } from '../detectors/egressAnomaly.js';
+import { queryPortscanCandidates, queryRareDestinationsSignificantTerms } from '../opensearch/queries/index.js';
 import { detectPortScans } from '../detectors/portScan.js';
+import { detectRareDestinations } from '../detectors/rareDest.js';
 import type { Finding } from '../detectors/types.js';
 import { createOpenAiCompatClient } from '../llm/openaiCompat.js';
 import type { InsightSink } from '../notify/insightSink.js';
@@ -21,7 +21,11 @@ import {
 } from './opensearchDetections.js';
 import { selectNovelInsightPostBatch, shouldSkipHeuristicPoll } from './pollUtils.js';
 import { enrichInsightsEgressBatch } from './enrichEgressEvidence.js';
-import { egressInsightWindows } from './egressInsightPolicy.js';
+
+/** Rare-dest foreground window (aligned with primary egress lookback). */
+const RARE_CURRENT_MINUTES = 60;
+/** Rare-dest background for significant_terms (same default as rareExternalDestinations tool). */
+const RARE_BACKGROUND_MINUTES = 7 * 24 * 60;
 
 function detectionFetchFailure(e: unknown): DetectionFetchResult {
   return { ok: false, findings: [], warning: thrownMessage(e) };
@@ -116,36 +120,19 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
           return;
         }
 
-        const { primary, spike } = egressInsightWindows;
         const portscanMinutes = 5;
-
-        const baselineWindow = windowRelative({ to: now, minutesBack: primary.baselineMinutes });
-        const primaryCurrentWindow = windowRelative({ to: now, minutesBack: primary.currentMinutes });
-        const spikeCurrentWindow = windowRelative({ to: now, minutesBack: spike.currentMinutes });
+        const rareCurrentWindow = windowRelative({ to: now, minutesBack: RARE_CURRENT_MINUTES });
+        const rareBackgroundWindow = windowRelative({ to: now, minutesBack: RARE_BACKGROUND_MINUTES });
         const portscanWindow = windowRelative({ to: now, minutesBack: portscanMinutes });
 
-        // Three queryTopEgressBySource calls: primary window, spike window, shared baseline.
-        const [primaryCurrentEgress, spikeCurrentEgress, baselineEgress, portscanRows] = await Promise.all([
-          queryTopEgressBySource({
+        const [rareRows, portscanRows] = await Promise.all([
+          queryRareDestinationsSignificantTerms({
             client,
             index: config.search.indexPattern,
             fields,
-            window: primaryCurrentWindow,
-            size: 25,
-          }),
-          queryTopEgressBySource({
-            client,
-            index: config.search.indexPattern,
-            fields,
-            window: spikeCurrentWindow,
-            size: 25,
-          }),
-          queryTopEgressBySource({
-            client,
-            index: config.search.indexPattern,
-            fields,
-            window: baselineWindow,
-            size: 200,
+            window: rareCurrentWindow,
+            backgroundWindow: rareBackgroundWindow,
+            size: 15,
           }),
           queryPortscanCandidates({
             client,
@@ -157,24 +144,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
         ]);
 
         const findings: Finding[] = [
-          ...detectEgressAnomalies({
-            mode: 'primary',
-            window: primaryCurrentWindow,
-            current: primaryCurrentEgress,
-            baseline: baselineEgress,
-            thresholds: config.thresholds,
-            baselineMinutes: primary.baselineMinutes,
-            currentMinutes: primary.currentMinutes,
-          }),
-          ...detectEgressAnomalies({
-            mode: 'spike',
-            window: spikeCurrentWindow,
-            current: spikeCurrentEgress,
-            baseline: baselineEgress,
-            thresholds: config.thresholds,
-            baselineMinutes: spike.baselineMinutes,
-            currentMinutes: spike.currentMinutes,
-          }),
+          ...detectRareDestinations({ window: rareCurrentWindow, rows: rareRows }),
           ...detectPortScans({
             window: portscanWindow,
             rows: portscanRows,

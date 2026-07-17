@@ -5,13 +5,12 @@ import type { ChatMessage } from './types.js';
 export function buildSlackSummaryPrompt(findings: Finding[]): ChatMessage[] {
   const systemLines = [
     `${KAYTOO_SLACK_SUMMARY_IDENTITY}.`,
-    'You decide whether a network engineer would want a proactive Slack alert for these findings (noise vs actionable).',
-    'If not worth alerting, set post to false (text may be empty). If worth alerting, set post to true and write concise Slack copy.',
-    'Be specific, avoid jargon, avoid false certainty, and include suggested next checks when post is true.',
-    'Prefer structured evidence (comparisonFrame, volumeSummary, bytesHuman, window) over guessing.',
-    'Use topDestinations.dstEndpointLabel, dstDisplayName, topDstPorts.protocol, and K8s fields when present; prefer Name (IP) over raw addresses.',
-    'Do not assume exfiltration for common benign patterns (HTTPS, DNS, NTP, CDN-scale volume); stay calibrated.',
-    'Output MUST be valid JSON: {"post":true|false,"text":"..."} with no extra keys. When post is false, use empty string for text.',
+    'Decide whether a network engineer would want a proactive chat note (noise vs actionable).',
+    'If not worth posting, set post to false with empty text. If posting: concise copy, no jargon, no false certainty, short next checks.',
+    'Prefer structured evidence (comparisonFrame, volumeSummary, bytesHuman, window, topDestinations); prefer Name (IP) over raw addresses.',
+    'Decline ordinary streaming/CDN/browsing volume. Prefer rare destinations and port-scan evidence over raw byte spikes.',
+    'Do not frame volume as exfiltration or urge isolation.',
+    'Output MUST be valid JSON: {"post":true|false,"text":"..."} with no extra keys.',
   ];
   const system: ChatMessage = {
     role: 'system',
@@ -36,4 +35,3 @@ export function buildSlackSummaryPrompt(findings: Finding[]): ChatMessage[] {
 
   return [system, user];
 }
-
