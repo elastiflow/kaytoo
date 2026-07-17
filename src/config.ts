@@ -275,8 +275,16 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, opts?: GetConfig
       apiKey: env.LLM_API_KEY,
       model: env.LLM_MODEL,
     },
-    behavior: {},
-    thresholds: {},
+    behavior: {
+      pollIntervalSeconds: env.KAYTOO_POLL_INTERVAL_SECONDS,
+      dedupeTtlSeconds: env.KAYTOO_DEDUPE_TTL_SECONDS,
+    },
+    thresholds: {
+      egressMultiplier: env.KAYTOO_EGRESS_MULTIPLIER,
+      egressMinBytes: env.KAYTOO_EGRESS_MIN_BYTES,
+      portscanDistinctDstPorts: env.KAYTOO_PORTSCAN_DISTINCT_DST_PORTS,
+      portscanMinPackets: env.KAYTOO_PORTSCAN_MIN_PACKETS,
+    },
     logging: { level: env.LOG_LEVEL },
     conversation: {},
     knowledge: kb ? { docsDir: kb } : {},

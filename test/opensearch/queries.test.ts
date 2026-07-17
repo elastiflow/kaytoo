@@ -548,6 +548,34 @@ describe('opensearch helpers', () => {
     expect(rows).toEqual([{ srcIp: '1.1.1.1', bytes: 100, srcDisplayName: 'pod-x' }]);
   });
 
+  it('queryTopEgressBySource externalOnly adds destination filter', async () => {
+    const { queryTopEgressBySource } = await import('../../src/opensearch/queries/index.js');
+    const client = {
+      search: vi.fn().mockResolvedValue({ body: { aggregations: { by_src: { buckets: [] } } } }),
+    };
+    const fields = {
+      bytesField: 'b',
+      srcIpField: 's',
+      dstIpField: 'd',
+      srcPortField: 'sp',
+      dstPortField: 'dp',
+      protoField: 'p',
+    };
+    await queryTopEgressBySource({
+      client: client as never,
+      index: 'i',
+      fields,
+      window: { from: 'a', to: 'b' },
+      size: 5,
+      externalOnly: true,
+    });
+    const body = client.search.mock.calls[0]![0].body as {
+      query: { bool: { filter: unknown[] } };
+    };
+    expect(body.query.bool.filter).toHaveLength(2);
+    expect(JSON.stringify(body.query.bool.filter[1])).toContain('must_not');
+  });
+
   it('queryTopEgressBySource returns [] when aggregation shape is missing', async () => {
     const { queryTopEgressBySource } = await import('../../src/opensearch/queries/index.js');
 

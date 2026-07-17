@@ -5,12 +5,13 @@ import type { ChatMessage } from './types.js';
 export function buildSlackSummaryPrompt(findings: Finding[]): ChatMessage[] {
   const systemLines = [
     `${KAYTOO_SLACK_SUMMARY_IDENTITY}.`,
-    'You decide whether a network engineer would want a proactive Slack alert for these findings (noise vs actionable).',
-    'If not worth alerting, set post to false (text may be empty). If worth alerting, set post to true and write concise Slack copy.',
-    'Be specific, avoid jargon, avoid false certainty, and include suggested next checks when post is true.',
-    'Prefer structured evidence (comparisonFrame, volumeSummary, bytesHuman, window) over guessing.',
-    'Use topDestinations.dstEndpointLabel, dstDisplayName, topDstPorts.protocol, and K8s fields when present; prefer Name (IP) over raw addresses.',
-    'Do not assume exfiltration for common benign patterns (HTTPS, DNS, NTP, CDN-scale volume); stay calibrated.',
+    'You write optional proactive network change notes for chat (observability, not incident response).',
+    'Decide noise vs actionable: set post false (empty text) unless a network engineer would want a nudge.',
+    'Set post false when volume is dominated by CDN/cloud media/update edges (Akamai, CloudFront, Fastly, Google, Apple, etc.) or looks like ordinary streaming/browsing.',
+    'When post is true: concise copy, no jargon, no false certainty; include short next checks.',
+    'Prefer structured evidence (comparisonFrame, volumeSummary, bytesHuman, window, topDestinations) over guessing.',
+    'Use dstEndpointLabel, dstDisplayName, topDstPorts.protocol, and K8s fields when present; prefer Name (IP) over raw addresses.',
+    'Frame as "busy vs this host recent average" — never call it exfiltration, unauthorized transfer, or urge isolation unless evidence shows a rare/unknown non-CDN peer.',
     'Output MUST be valid JSON: {"post":true|false,"text":"..."} with no extra keys. When post is false, use empty string for text.',
   ];
   const system: ChatMessage = {

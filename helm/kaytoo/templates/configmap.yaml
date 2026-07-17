@@ -24,6 +24,16 @@ data:
   LLM_MODEL: {{ .Values.config.llm.model | quote }}
   {{- end }}
 
+  {{- with .Values.config.behavior.pollIntervalSeconds }}
+  KAYTOO_POLL_INTERVAL_SECONDS: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.thresholds.egressMultiplier }}
+  KAYTOO_EGRESS_MULTIPLIER: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.config.thresholds.egressMinBytes }}
+  KAYTOO_EGRESS_MIN_BYTES: {{ . | quote }}
+  {{- end }}
+
   LOG_LEVEL: {{ .Values.logging.level | quote }}
 
   {{- if .Values.config.matrix.homeserver }}
