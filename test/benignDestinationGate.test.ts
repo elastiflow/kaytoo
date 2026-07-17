@@ -100,6 +100,24 @@ describe('benignDestinationGate', () => {
     expect(r.suppress).toBe(false);
   });
 
+  it('allows when CDN tops are a minority of finding bytes', () => {
+    const r = shouldSuppressVolumeInsight({
+      ...egressFinding([
+        { dstIp: '1.1.1.1', dstEndpointLabel: 'Cloudflare', bytes: 400 },
+        { dstIp: '2.2.2.2', dstEndpointLabel: 'Akamai', bytes: 400 },
+      ]),
+      evidence: {
+        bytes: 2000,
+        topDestinations: [
+          { dstIp: '1.1.1.1', dstEndpointLabel: 'Cloudflare', bytes: 400 },
+          { dstIp: '2.2.2.2', dstEndpointLabel: 'Akamai', bytes: 400 },
+        ],
+      },
+    });
+    expect(r.suppress).toBe(false);
+    expect(r.benignRatio).toBe(0.4);
+  });
+
   it('ignores non-volume finding kinds', () => {
     expect(
       shouldSuppressVolumeInsight({

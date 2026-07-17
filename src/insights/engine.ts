@@ -251,8 +251,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       log.warn({ findingCount: toPost.length, output: config.output }, 'post findings failed');
       return;
     }
-    toPost.forEach((f) => dedupe.mark(f.id));
-    log.info({ findingCount: toPost.length, output: config.output }, 'posted findings');
+    toSummarize.forEach((f) => dedupe.mark(f.id));
+    log.info({ findingCount: toSummarize.length, output: config.output }, 'posted findings');
   }
 
   await pollOnce();

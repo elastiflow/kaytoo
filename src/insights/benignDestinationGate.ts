@@ -94,17 +94,23 @@ export function shouldSuppressVolumeInsight(finding: Finding): BenignGateResult 
   const tops = parseTopDestinations(finding.evidence);
   if (tops.length === 0) return { suppress: false };
 
-  const totalBytes = tops.reduce((s, d) => s + (d.bytes ?? 0), 0);
-  if (totalBytes <= 0) return { suppress: false };
+  const topBytes = tops.reduce((s, d) => s + (d.bytes ?? 0), 0);
+  if (topBytes <= 0) return { suppress: false };
+
+  const evidenceBytes = finding.evidence['bytes'];
+  const findingBytes =
+    typeof evidenceBytes === 'number' && Number.isFinite(evidenceBytes) && evidenceBytes > 0
+      ? evidenceBytes
+      : topBytes;
 
   const benignBytes = tops.reduce((s, d) => s + (destinationLooksBenign(d) ? (d.bytes ?? 0) : 0), 0);
-  const benignRatio = benignBytes / totalBytes;
+  const benignRatio = benignBytes / findingBytes;
   if (benignRatio < BENIGN_DST_BYTE_RATIO) {
     return { suppress: false, benignRatio };
   }
   return {
     suppress: true,
     benignRatio,
-    reason: `benign destinations ≥ ${Math.round(BENIGN_DST_BYTE_RATIO * 100)}% of enriched bytes`,
+    reason: `benign destinations ≥ ${Math.round(BENIGN_DST_BYTE_RATIO * 100)}% of finding bytes`,
   };
 }
