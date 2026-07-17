@@ -247,8 +247,11 @@ cmd_verify() {
       -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | tail -n 1
   }
   kubectl -n "$ns" get svc kaytoo-chat &>/dev/null || e2e_die "svc/kaytoo-chat missing"
-  local PF_CHAT=0
-  cleanup_pf() { kill "${PF_CHAT:-0}" 2>/dev/null || true; }
+  PF_CHAT=""
+  cleanup_pf() {
+    local pid="${PF_CHAT:-}"
+    [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+  }
   trap cleanup_pf EXIT
   local CHAT_BASE="http://127.0.0.1:${CHAT_PF_LOCAL}"
   if ! e2e_wait_http "${CHAT_BASE}/health" 2; then
@@ -272,6 +275,126 @@ cmd_verify() {
   e2e_log "expect topTalkersByBytes in logs"
   logs_grep 'agent tool finished' || { kubectl -n "$ns" logs "$pod" -c kaytoo --tail=120; exit 1; }
   logs_grep '"tool":"topTalkersByBytes"' || { kubectl -n "$ns" logs "$pod" -c kaytoo --tail=120; exit 1; }
+
+  e2e_log "OpenSearch Anomaly Detection: plugin stats (expect HTTP 200)"
+  local ad_stats os_base="${OS_URL%/}"
+  ad_stats="$(curl -k -sS -o /dev/null -w '%{http_code}' -u "${OS_USER}:${OS_PASS}" \
+    -X GET "${os_base}/_plugins/_anomaly_detection/stats" 2>/dev/null || echo "000")"
+  [[ "$ad_stats" == "200" ]] || e2e_die "AD stats returned HTTP ${ad_stats} (plugin missing or auth?)"
+
+  e2e_log "OpenSearch AD: wait for detectors/_search HTTP 200 (system index after Kaytoo seed)"
+  local ad_http ad_json i
+  ad_http="000"
+  for ((i = 0; i < 45; i++)); do
+    ad_http="$(curl -k -sS -o /dev/null -w '%{http_code}' -u "${OS_USER}:${OS_PASS}" \
+      -X POST "${os_base}/_plugins/_anomaly_detection/detectors/_search" \
+      -H 'Content-Type: application/json' \
+      -d '{"query":{"match_all":{}},"size":1}' 2>/dev/null || echo "000")"
+    [[ "$ad_http" == "200" ]] && break
+    sleep 2
+  done
+  [[ "$ad_http" == "200" ]] || e2e_die "AD detectors/_search stayed non-200 (last HTTP ${ad_http}; index warming?)"
+
+  e2e_log "OpenSearch AD: expect Kaytoo egress detector in list (seed/adopt)"
+  ad_json="$(curl -k -sS -u "${OS_USER}:${OS_PASS}" \
+    -X POST "${os_base}/_plugins/_anomaly_detection/detectors/_search" \
+    -H 'Content-Type: application/json' \
+    -d '{"query":{"match_all":{}},"size":50}' 2>/dev/null || true)"
+  echo "$ad_json" | grep -q 'Kaytoo flow egress' ||
+    e2e_die "AD detector list missing Kaytoo egress detector (native pipeline seed/adopt)"
+
+  e2e_log "Kaytoo logs: native AD must not report plugin 404"
+  if logs_grep 'OpenSearch Anomaly Detection plugin not available (404)' 25000; then
+    kubectl -n "$ns" logs "$pod" -c kaytoo --tail=200 >&2
+    e2e_die "Kaytoo logged AD plugin unavailable (404)"
+  fi
+
+  e2e_log "OpenSearch AD: extract detector id for historical analysis"
+  local det_id
+  det_id="$(printf '%s' "$ad_json" | node "${REPO_ROOT}/e2e/extract-kaytoo-ad-detector-id.mjs")" ||
+    e2e_die "could not extract Kaytoo AD detector id"
+  [[ -n "$det_id" ]] || e2e_die "empty Kaytoo AD detector id"
+
+  local hist_payload hist_http htmp stopped
+  stopped=0
+  hist_payload="$(python3 -c "import time, json; e=int(time.time()*1000); s=e-72*3600*1000; print(json.dumps({'start_time':s,'end_time':e}))")"
+  htmp="$(mktemp "${TMPDIR:-/tmp}/e2e-ad-hist.XXXXXX")"
+  hist_http="$(curl -k -sS -o "$htmp" -w '%{http_code}' -u "${OS_USER}:${OS_PASS}" \
+    -X POST "${os_base}/_plugins/_anomaly_detection/detectors/${det_id}/_start" \
+    -H 'Content-Type: application/json' \
+    -d "$hist_payload")"
+  if [[ "$hist_http" != "200" && "$hist_http" != "201" ]]; then
+    e2e_log "WARN: AD historical _start HTTP ${hist_http}; retrying after _stop"
+    curl -k -sS -o /dev/null -u "${OS_USER}:${OS_PASS}" \
+      -X POST "${os_base}/_plugins/_anomaly_detection/detectors/${det_id}/_stop" || true
+    stopped=1
+    sleep 3
+    hist_http="$(curl -k -sS -o "$htmp" -w '%{http_code}' -u "${OS_USER}:${OS_PASS}" \
+      -X POST "${os_base}/_plugins/_anomaly_detection/detectors/${det_id}/_start" \
+      -H 'Content-Type: application/json' \
+      -d "$hist_payload")"
+  fi
+  [[ "$hist_http" == "200" || "$hist_http" == "201" ]] || {
+    cat "$htmp" >&2
+    rm -f "$htmp"
+    e2e_die "OpenSearch AD historical _start failed (HTTP ${hist_http})"
+  }
+  local task_id
+  task_id="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('_id',''))" "$htmp")"
+  rm -f "$htmp"
+  [[ -n "$task_id" ]] || e2e_die "OpenSearch AD historical _start response missing _id (task id)"
+  local ad_use_task
+  ad_use_task=1
+  [[ "$task_id" == "$det_id" ]] && {
+    e2e_log "WARN: AD historical _id equals detector id; omitting task_id in results/_search"
+    ad_use_task=0
+  }
+  if [[ "$stopped" == "1" ]]; then
+    e2e_log "OpenSearch AD: restart real-time detector after _stop"
+    curl -k -sS -o /dev/null -u "${OS_USER}:${OS_PASS}" \
+      -X POST "${os_base}/_plugins/_anomaly_detection/detectors/${det_id}/_start" \
+      -H 'Content-Type: application/json' -d '{}' || true
+    sleep 5
+  fi
+
+  e2e_log "OpenSearch AD: wait for historical anomaly results (results/_search)"
+  local hits j
+  hits=0
+  for ((j = 0; j < 60; j++)); do
+    if [[ "$ad_use_task" == "1" ]]; then
+      hits="$(node "${REPO_ROOT}/e2e/count-ad-historical-hits.mjs" "$os_base" "$OS_USER" "$OS_PASS" "$det_id" "$task_id" | tr -d '\n')"
+    else
+      hits="$(node "${REPO_ROOT}/e2e/count-ad-historical-hits.mjs" "$os_base" "$OS_USER" "$OS_PASS" "$det_id" '' | tr -d '\n')"
+    fi
+    [[ "${hits:-0}" =~ ^[0-9]+$ ]] || hits=0
+    [[ "${hits:-0}" -gt 0 ]] && break
+    if [[ "$j" -eq 35 && "$ad_use_task" == "1" ]]; then
+      e2e_log "retrying AD results/_search without task_id filter"
+      ad_use_task=0
+    fi
+    sleep 10
+  done
+  [[ "${hits:-0}" -gt 0 ]] || e2e_die "no AD historical hits with anomaly_grade>0 (detector=${det_id} task=${task_id})"
+
+  e2e_log "Kaytoo: wait for poll to ingest AD results and post (includesOpensearchAnomaly)"
+  sleep 45
+  pod="$(kaytoo_pod)"
+  [[ -n "$pod" ]] || e2e_die "no Running kaytoo pod (after AD historical)"
+  local found k
+  found=0
+  for ((k = 0; k < 48; k++)); do
+    if logs_grep 'includesOpensearchAnomaly":true' 80000; then
+      found=1
+      break
+    fi
+    sleep 5
+  done
+  if [[ "$found" != "1" ]]; then
+    kubectl -n "$ns" logs "$pod" -c kaytoo --tail=250 >&2
+    e2e_die "Kaytoo did not log posted findings with includesOpensearchAnomaly:true (check LLM summarizeFindings in .env)"
+  fi
+  e2e_log "Kaytoo posted OpenSearch AD finding(s) to console pipeline"
+
   e2e_log "OK verify"
 }
 

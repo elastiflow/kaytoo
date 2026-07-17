@@ -130,6 +130,7 @@ async function topTalkers() {
   const topIps = (agg.aggregations?.by_src?.buckets ?? []).map((b) => String(b.key)).filter(Boolean);
   if (!topIps.length) die('aggregation returned no talker buckets');
   console.error(`${p} top talker IPs from OpenSearch: ${topIps.join(', ')}`);
+  await chatPostJson('/chat', { text: 'reset' });
   const q =
     e.TOP_TALKERS_QUESTION ??
     'What is the pod name (from flow records) for each of the top 5 talkers by total bytes in the last 7 days? Use the topTalkersByBytes tool first, then answer. List each talker IP, total bytes, and pod name if present.';

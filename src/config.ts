@@ -91,6 +91,18 @@ const configSchema = z
     behavior: z.object({
       pollIntervalSeconds: z.string().default('300').pipe(intFromString),
       dedupeTtlSeconds: z.string().default('3600').pipe(intFromString),
+      /** When set, bounds OpenSearch/ES native anomaly fetches (default: poll/60 + 10). */
+      adFetchMinutesBack: z
+        .union([
+          z.literal('').transform(() => undefined),
+          z
+            .string()
+            .trim()
+            .regex(/^\d+$/)
+            .pipe(intFromString)
+            .refine((n) => n >= 1 && n <= 100_080, 'must be 1..100080'),
+        ])
+        .optional(),
     }),
     thresholds: z.object({
       egressMultiplier: z.coerce.number().finite().positive().default(3),
@@ -275,9 +287,15 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env, opts?: GetConfig
       apiKey: env.LLM_API_KEY,
       model: env.LLM_MODEL,
     },
-    behavior: {},
+    behavior: {
+      ...(optStr(env.KAYTOO_POLL_INTERVAL_SECONDS) ? { pollIntervalSeconds: env.KAYTOO_POLL_INTERVAL_SECONDS } : {}),
+      ...(optStr(env.KAYTOO_AD_FETCH_MINUTES_BACK) ? { adFetchMinutesBack: env.KAYTOO_AD_FETCH_MINUTES_BACK } : {}),
+    },
     thresholds: {},
-    logging: { level: env.LOG_LEVEL },
+    logging: {
+      level: env.LOG_LEVEL,
+      matrixSdkLevel: env.MATRIX_SDK_LOG_LEVEL,
+    },
     conversation: {},
     knowledge: kb ? { docsDir: kb } : {},
     agent: {

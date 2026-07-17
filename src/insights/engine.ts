@@ -14,14 +14,14 @@ import type { InsightSink } from '../notify/insightSink.js';
 import { DedupeStore } from '../state/dedupe.js';
 import { thrownMessage } from '../util/guards.js';
 import { windowRelative } from '../util/time.js';
-import {
-  fetchOpenSearchAdFindings,
-  fetchOpenSearchAlertingFindings,
-  type DetectionFetchResult,
-} from './opensearchDetections.js';
+import type { DetectionFetchResult } from './opensearchDetections.js';
 import { selectNovelInsightPostBatch, shouldSkipHeuristicPoll } from './pollUtils.js';
 import { enrichInsightsEgressBatch } from './enrichEgressEvidence.js';
 import { egressInsightWindows } from './egressInsightPolicy.js';
+import { ensureNativeAnomalyPipeline } from './nativeAnomalyPipeline.js';
+import { fetchNativeAlertFindings, fetchNativeAnomalyFindings } from './nativeDetections.js';
+import type { NativeAnomalyPipelineResult } from './nativeAnomalyTypes.js';
+import type { ElasticsearchMlClient } from '../elasticsearch/mlAnomalyLifecycle.js';
 
 function detectionFetchFailure(e: unknown): DetectionFetchResult {
   return { ok: false, findings: [], warning: thrownMessage(e) };
@@ -57,52 +57,74 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
     'resolved opensearch field mapping',
   );
 
+  const nativeAnomaly = await (async (): Promise<{
+    pipeline: NativeAnomalyPipelineResult;
+    esMlClient: ElasticsearchMlClient | null;
+  }> => {
+    try {
+      return await ensureNativeAnomalyPipeline({
+        backend: config.search.backend,
+        search: config.search,
+        searchClient: client,
+        indexPattern: config.search.indexPattern,
+        fields,
+        pollIntervalSeconds: config.behavior.pollIntervalSeconds,
+      });
+    } catch (e) {
+      log.warn({ ...logErr(e) }, 'native anomaly pipeline ensure failed; continuing without scoped native anomaly');
+      return { pipeline: { ok: false, hasScopedSources: false }, esMlClient: null };
+    }
+  })();
+  const { pipeline: nativePipeline, esMlClient } = nativeAnomaly;
+
   const llm = createOpenAiCompatClient({
     ...config.llm,
     includeDebugBodies: config.logging.includeDebugBodies,
   });
   const dedupe = new DedupeStore(config.behavior.dedupeTtlSeconds * 1000);
   const shouldWarnDegraded = createThrottle(10 * 60_000);
-  let timer: NodeJS.Timeout | undefined;
-  let inFlight = false;
+  const pollLoop = { timer: undefined as NodeJS.Timeout | undefined, inFlight: false };
+
+  const nativePipelineReady = nativePipeline.ok === true && nativePipeline.hasScopedSources === true;
 
   const scheduleNext = (): void => {
     if (controller.signal.aborted) return;
-    timer = setTimeout(() => void pollOnce(), config.behavior.pollIntervalSeconds * 1000);
+    pollLoop.timer = setTimeout(() => void pollOnce(), config.behavior.pollIntervalSeconds * 1000);
   };
 
   async function pollOnce(): Promise<void> {
-    if (inFlight) return;
-    inFlight = true;
+    if (pollLoop.inFlight) return;
+    pollLoop.inFlight = true;
     return runWithLogContextAsync({ pollId: randomUUID() }, async () => {
       try {
         if (controller.signal.aborted) return;
 
         const now = new Date();
 
-        const [alerting, ad] =
-          config.search.backend === 'opensearch'
-            ? await Promise.all([
-                fetchOpenSearchAlertingFindings({
-                  client,
-                  now,
-                  minutesBack: config.behavior.pollIntervalSeconds / 60 + 5,
-                }).catch(detectionFetchFailure),
-                fetchOpenSearchAdFindings({
-                  client,
-                  minutesBack: config.behavior.pollIntervalSeconds / 60 + 10,
-                }).catch(detectionFetchFailure),
-              ])
-            : ([{ ok: true, findings: [], healthyEmpty: false } as DetectionFetchResult, { ok: true, findings: [], healthyEmpty: false } as DetectionFetchResult] satisfies [
-                DetectionFetchResult,
-                DetectionFetchResult,
-              ]);
+        const adMinutesBack =
+          config.behavior.adFetchMinutesBack ?? config.behavior.pollIntervalSeconds / 60 + 10;
+        const [alerting, ad] = await Promise.all([
+          fetchNativeAlertFindings({
+            backend: config.search.backend,
+            client,
+            now,
+            minutesBack: config.behavior.pollIntervalSeconds / 60 + 5,
+          }).catch(detectionFetchFailure),
+          fetchNativeAnomalyFindings({
+            backend: config.search.backend,
+            searchClient: client,
+            esMlClient,
+            pipeline: nativePipeline,
+            now,
+            minutesBack: adMinutesBack,
+          }).catch(detectionFetchFailure),
+        ]);
 
-        if (!alerting.ok && alerting.warning && shouldWarnDegraded('alerting')) {
-          log.warn({ degradedKey: 'alerting', degradedMsg: alerting.warning }, 'insights degraded');
-        }
-        if (!ad.ok && ad.warning && shouldWarnDegraded('ad')) {
-          log.warn({ degradedKey: 'ad', degradedMsg: ad.warning }, 'insights degraded');
+        const degraded: Record<string, string> = {};
+        if (!alerting.ok && alerting.warning) degraded.alerting = alerting.warning;
+        if (!ad.ok && ad.warning) degraded.ad = ad.warning;
+        if (Object.keys(degraded).length > 0 && shouldWarnDegraded('insights')) {
+          log.warn({ degraded }, 'insights degraded');
         }
 
         const backendFindings = [...alerting.findings, ...ad.findings];
@@ -111,8 +133,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
           return;
         }
 
-        if (shouldSkipHeuristicPoll(alerting, ad)) {
-          log.debug('skipping heuristic detectors: alerting and AD healthy empty');
+        if (shouldSkipHeuristicPoll(alerting, ad, nativePipelineReady)) {
+          log.debug('skipping heuristic detectors: alerting and AD healthy empty with native pipeline ready');
           return;
         }
 
@@ -192,7 +214,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       } catch (e) {
         log.error({ ...logErr(e) }, 'poll failed');
       } finally {
-        inFlight = false;
+        pollLoop.inFlight = false;
         scheduleNext();
       }
     });
@@ -232,7 +254,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       return;
     }
     toPost.forEach((f) => dedupe.mark(f.id));
-    log.info({ findingCount: toPost.length, output: config.output }, 'posted findings');
+    const includesOpensearchAnomaly = toPost.some((f) => f.kind === 'opensearch_anomaly');
+    log.info({ findingCount: toPost.length, output: config.output, includesOpensearchAnomaly }, 'posted findings');
   }
 
   await pollOnce();
@@ -240,7 +263,7 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
   return {
     stop: () => {
       controller.abort();
-      if (timer) clearTimeout(timer);
+      if (pollLoop.timer) clearTimeout(pollLoop.timer);
     },
   };
 }

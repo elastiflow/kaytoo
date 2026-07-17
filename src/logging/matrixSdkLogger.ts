@@ -1,4 +1,5 @@
 import type { Logger } from 'matrix-js-sdk/lib/logger.js';
+import { logger as matrixSdkGlobalLogger } from 'matrix-js-sdk/lib/logger.js';
 import type { Logger as PinoLogger } from 'pino';
 import { getLogger } from './logger.js';
 
@@ -73,4 +74,29 @@ export function createMatrixJsSdkLogger(matrixSdkLevel: MatrixSdkLevel): Logger 
   }
 
   return new PinoMatrixLogger(base);
+}
+
+function patchMatrixSdkGlobalLogger(bridge: Logger): void {
+  const globalLogger = matrixSdkGlobalLogger as Logger & {
+    log: (...msg: unknown[]) => void;
+    getChild: (namespace: string) => Logger;
+  };
+  globalLogger.trace = (...msg: unknown[]) => bridge.trace(...msg);
+  globalLogger.debug = (...msg: unknown[]) => bridge.debug(...msg);
+  globalLogger.info = (...msg: unknown[]) => bridge.info(...msg);
+  globalLogger.warn = (...msg: unknown[]) => bridge.warn(...msg);
+  globalLogger.error = (...msg: unknown[]) => bridge.error(...msg);
+  globalLogger.log = (...msg: unknown[]) =>
+    (bridge as Logger & { log: (...msg: unknown[]) => void }).log(...msg);
+  globalLogger.getChild = (namespace: string) => bridge.getChild(namespace);
+}
+
+/**
+ * Routes matrix-js-sdk's module-level logger (used by Room and timelines) and returns
+ * the same bridge for {@link MatrixClient} construction.
+ */
+export function configureMatrixJsSdkLogging(matrixSdkLevel: MatrixSdkLevel): Logger {
+  const bridge = createMatrixJsSdkLogger(matrixSdkLevel);
+  patchMatrixSdkGlobalLogger(bridge);
+  return bridge;
 }

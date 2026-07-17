@@ -31,7 +31,7 @@ Local stack: **Mermin** + OpenSearch ([`k8s/mermin-stack-values.yaml`](k8s/mermi
 
 | Variable | `e2e:up` | Notes |
 | --- | --- | --- |
-| `OPENSEARCH_PASSWORD` | required | Mermin/OpenSearch admin; also baked into rendered Kaytoo values |
+| `OPENSEARCH_PASSWORD` | required | Mermin/OpenSearch admin; also baked into rendered Kaytoo values. Must satisfy OpenSearch 2.12+ rules (length ≥8, include uppercase, lowercase, digit, and a non-alphanumeric symbol); hex-only values such as `openssl rand -hex` are rejected by the image. |
 | `LLM_BASE_URL` | required | OpenAI-compatible URL |
 | `LLM_API_KEY` | required | |
 | `LLM_MODEL` | optional | |
@@ -77,14 +77,20 @@ kubectl -n elastiflow logs deploy/kaytoo -c kaytoo -f
 
 ## Verify
 
-With forwards up and OpenSearch reachable on the host:
+Requires **`e2e:up`** (forwards on **9200** / **18080**) and repo **`.env`** with the same OpenSearch URL/creds as Kaytoo (see Configuration).
 
 ```bash
 export KUBECONFIG="$(pwd)/e2e/.generated/kubeconfig-kind-kaytoo-e2e"
 npm run e2e:verify
 ```
 
-`verify` starts a temporary chat port-forward if needed.
+**What it checks**
+
+- Chat: `e2e/chat.mjs` hits `/health` and `/chat`; OpenSearch-backed top talkers; Kaytoo logs show `topTalkersByBytes` ran.
+- **Anomaly Detection (real plugin):** stats 200; `detectors/_search` until 200; Kaytoo detector name present; no AD-plugin-missing line in Kaytoo logs; **`POST .../detectors/{id}/_start`** with a **72h historical window**; poll **`POST .../detectors/results/_search`** until **`anomaly_grade` > 0** for that detector/task; then Kaytoo must pick up **`opensearch_anomaly`** findings and post (see insights bullet). E2e Helm sets **`KAYTOO_AD_FETCH_MINUTES_BACK`** (via `config.behavior.adFetchMinutesBack`) so fetches reach historical AD results, not only the default poll-based lookback.
+- Insights: after AD historical results exist, Kaytoo must log **`posted findings`** with **`includesOpensearchAnomaly":true`** (LLM summarize must succeed; use a capable model in `.env`).
+
+Temporary `kubectl port-forward` for chat is started only if **18080** is not already serving `/health`.
 
 ## Host Kaytoo (optional)
 

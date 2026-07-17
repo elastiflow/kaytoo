@@ -28,6 +28,9 @@ resources:
     memory: 512Mi
 
 config:
+  behavior:
+    pollIntervalSeconds: ""
+    adFetchMinutesBack: ""
   slack:
     channelId: ""
   matrix:
@@ -69,6 +72,8 @@ secrets:
 
 logging:
   level: "info"
+  # matrix-js-sdk (Room echo, sync). Default WARN when unset.
+  matrixSdkLevel: "ERROR"
 
 networkPolicy:
   enabled: false

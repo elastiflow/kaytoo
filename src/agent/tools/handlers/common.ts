@@ -9,12 +9,22 @@ export function clampMinutesBack(minutes: number, policy: AgentPolicy): number {
   return Math.min(Math.floor(minutes), maxM);
 }
 
+function indexAllowedOrDefault(candidate: string, defaultIndex: string, policy: AgentPolicy): string {
+  try {
+    assertIndexAllowed(candidate, policy);
+    return candidate;
+  } catch {
+    assertIndexAllowed(defaultIndex, policy);
+    return defaultIndex;
+  }
+}
+
 export async function resolveToolIndexAndFields(opts: {
   ctx: { client: SearchClient; policy: AgentPolicy; defaultIndex: string };
   args: Record<string, unknown>;
 }): Promise<{ index: string; fields: FieldPreference }> {
-  const index = typeof opts.args.index === 'string' ? opts.args.index : opts.ctx.defaultIndex;
-  assertIndexAllowed(index, opts.ctx.policy);
+  const fromArgs = typeof opts.args.index === 'string' ? opts.args.index : undefined;
+  const index = indexAllowedOrDefault(fromArgs ?? opts.ctx.defaultIndex, opts.ctx.defaultIndex, opts.ctx.policy);
   const fields = await chooseFields({ client: opts.ctx.client, index });
   return { index, fields };
 }

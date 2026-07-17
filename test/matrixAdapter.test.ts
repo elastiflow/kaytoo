@@ -24,7 +24,7 @@ vi.mock('matrix-js-sdk', () => ({
 }));
 
 vi.mock('../src/logging/matrixSdkLogger.js', () => ({
-  createMatrixJsSdkLogger: vi.fn(() => ({})),
+  configureMatrixJsSdkLogging: vi.fn(() => ({})),
 }));
 
 import { createClient } from 'matrix-js-sdk';

@@ -26,6 +26,7 @@ config:
     tlsInsecure: "true"
   behavior:
     pollIntervalSeconds: "15"
+    adFetchMinutesBack: "10080"
   thresholds:
     egressMinBytes: "5000"
     egressMultiplier: "2"
