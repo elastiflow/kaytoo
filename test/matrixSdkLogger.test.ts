@@ -9,7 +9,8 @@ const makePino = () => ({ trace, debug, info, warn, error, child: vi.fn(() => ma
 
 vi.mock('../src/logging/logger.js', () => ({ getLogger: vi.fn(() => makePino()) }));
 
-import { createMatrixJsSdkLogger } from '../src/logging/matrixSdkLogger.js';
+import { logger as matrixSdkGlobalLogger } from 'matrix-js-sdk/lib/logger.js';
+import { configureMatrixJsSdkLogging, createMatrixJsSdkLogger } from '../src/logging/matrixSdkLogger.js';
 
 describe('createMatrixJsSdkLogger', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -42,5 +43,14 @@ describe('createMatrixJsSdkLogger', () => {
     expect(debug).not.toHaveBeenCalled();
     child.warn('y');
     expect(warn).toHaveBeenCalled();
+  });
+
+  it('configureMatrixJsSdkLogging patches the module-level matrix logger', () => {
+    vi.clearAllMocks();
+    configureMatrixJsSdkLogging('ERROR');
+    (matrixSdkGlobalLogger as { log: (...a: unknown[]) => void }).log('echo');
+    expect(debug).not.toHaveBeenCalled();
+    (matrixSdkGlobalLogger as { error: (...a: unknown[]) => void }).error('fail');
+    expect(error).toHaveBeenCalledWith({ matrixMsg: 'fail' }, 'matrix-js-sdk');
   });
 });

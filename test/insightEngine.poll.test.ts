@@ -495,4 +495,22 @@ describe('degraded warnings rate limit', () => {
 
     stop();
   });
+
+  it('combines alerting and ad degraded into one warn line', async () => {
+    resetEngMocks({
+      alerting: { ok: false, findings: [], warning: 'alerting down' },
+      ad: { ok: false, findings: [], warning: 'ad down' },
+    });
+    const stub = makeInsightsLoggerStub();
+    const restoreLogger = installInsightsLoggerSpy(stub);
+    try {
+      const { startInsightEngine } = await import('../src/insights/engine.js');
+      await startInsightEngine({ config: consoleSearchConfig(), insightSink: mockInsightSink() });
+      const degraded = stub.warn.mock.calls.filter((c) => c[1] === 'insights degraded');
+      expect(degraded).toHaveLength(1);
+      expect(degraded[0]?.[0]).toEqual({ degraded: { alerting: 'alerting down', ad: 'ad down' } });
+    } finally {
+      restoreLogger();
+    }
+  });
 });

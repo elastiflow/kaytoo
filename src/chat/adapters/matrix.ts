@@ -8,7 +8,7 @@ import {
   RoomEvent,
 } from 'matrix-js-sdk';
 import { getLogger, logErr } from '../../logging/logger.js';
-import { createMatrixJsSdkLogger, type MatrixSdkLevel } from '../../logging/matrixSdkLogger.js';
+import { configureMatrixJsSdkLogging, type MatrixSdkLevel } from '../../logging/matrixSdkLogger.js';
 import type { ChatEvent } from '../types.js';
 
 const log = getLogger({ component: 'chat.matrix' });
@@ -36,7 +36,7 @@ export async function startMatrixAdapter(opts: {
   defaultRoomId?: string;
   onEvent: (evt: ChatEvent) => Promise<void>;
 }): Promise<{ stop: () => Promise<void>; client: MatrixClient }> {
-  const logger = createMatrixJsSdkLogger(opts.matrixSdkLevel);
+  const logger = configureMatrixJsSdkLogging(opts.matrixSdkLevel);
   const userId =
     'accessToken' in opts.auth ? await whoamiUserId(opts.homeserverUrl, opts.auth.accessToken) : undefined;
 

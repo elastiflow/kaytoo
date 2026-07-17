@@ -24,6 +24,7 @@ describe('getConfig', () => {
     expect(cfg.llm.model).toBe('gpt-5.4-codex');
     expect(cfg.behavior.pollIntervalSeconds).toBe(300);
     expect(cfg.behavior.dedupeTtlSeconds).toBe(3600);
+    expect(cfg.behavior.adFetchMinutesBack).toBeUndefined();
     expect(cfg.logging.level).toBe('info');
     expect(cfg.logging.includeDebugBodies).toBe(false);
     expect(cfg.logging.redactPaths).toEqual([]);
@@ -44,6 +45,11 @@ describe('getConfig', () => {
     expect(cfg.agent.aggregateRequestTimeoutMs).toBe(25_000);
   });
 
+  it('reads MATRIX_SDK_LOG_LEVEL', () => {
+    const cfg = getConfig({ ...baseEnv, MATRIX_SDK_LOG_LEVEL: 'error' });
+    expect(cfg.logging.matrixSdkLevel).toBe('ERROR');
+  });
+
   it('supports numeric overrides and boolean strings', () => {
     const cfg = getConfig({
       ...baseEnv,
@@ -62,6 +68,31 @@ describe('getConfig', () => {
     expect(cfg.logging.includeDebugBodies).toBe(false);
     expect(cfg.logging.redactPaths).toEqual([]);
     expect(cfg.logging.matrixSdkLevel).toBe('WARN');
+  });
+
+  it('parses KAYTOO_POLL_INTERVAL_SECONDS and KAYTOO_AD_FETCH_MINUTES_BACK', () => {
+    const cfg = getConfig({
+      ...baseEnv,
+      KAYTOO_POLL_INTERVAL_SECONDS: '60',
+      KAYTOO_AD_FETCH_MINUTES_BACK: '4320',
+    });
+    expect(cfg.behavior.pollIntervalSeconds).toBe(60);
+    expect(cfg.behavior.adFetchMinutesBack).toBe(4320);
+  });
+
+  it('rejects KAYTOO_AD_FETCH_MINUTES_BACK out of range', () => {
+    expect(() =>
+      getConfig({
+        ...baseEnv,
+        KAYTOO_AD_FETCH_MINUTES_BACK: '0',
+      }),
+    ).toThrowError(/Invalid configuration/);
+    expect(() =>
+      getConfig({
+        ...baseEnv,
+        KAYTOO_AD_FETCH_MINUTES_BACK: '100081',
+      }),
+    ).toThrowError(/Invalid configuration/);
   });
 
   it('ignores undocumented threshold env vars', () => {

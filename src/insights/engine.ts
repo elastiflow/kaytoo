@@ -101,6 +101,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
 
         const now = new Date();
 
+        const adMinutesBack =
+          config.behavior.adFetchMinutesBack ?? config.behavior.pollIntervalSeconds / 60 + 10;
         const [alerting, ad] = await Promise.all([
           fetchNativeAlertFindings({
             backend: config.search.backend,
@@ -114,15 +116,15 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
             esMlClient,
             pipeline: nativePipeline,
             now,
-            minutesBack: config.behavior.pollIntervalSeconds / 60 + 10,
+            minutesBack: adMinutesBack,
           }).catch(detectionFetchFailure),
         ]);
 
-        if (!alerting.ok && alerting.warning && shouldWarnDegraded('alerting')) {
-          log.warn({ degradedKey: 'alerting', degradedMsg: alerting.warning }, 'insights degraded');
-        }
-        if (!ad.ok && ad.warning && shouldWarnDegraded('ad')) {
-          log.warn({ degradedKey: 'ad', degradedMsg: ad.warning }, 'insights degraded');
+        const degraded: Record<string, string> = {};
+        if (!alerting.ok && alerting.warning) degraded.alerting = alerting.warning;
+        if (!ad.ok && ad.warning) degraded.ad = ad.warning;
+        if (Object.keys(degraded).length > 0 && shouldWarnDegraded('insights')) {
+          log.warn({ degraded }, 'insights degraded');
         }
 
         const backendFindings = [...alerting.findings, ...ad.findings];
@@ -252,7 +254,8 @@ export async function startInsightEngine(opts: { config: KaytooConfig; insightSi
       return;
     }
     toPost.forEach((f) => dedupe.mark(f.id));
-    log.info({ findingCount: toPost.length, output: config.output }, 'posted findings');
+    const includesOpensearchAnomaly = toPost.some((f) => f.kind === 'opensearch_anomaly');
+    log.info({ findingCount: toPost.length, output: config.output, includesOpensearchAnomaly }, 'posted findings');
   }
 
   await pollOnce();

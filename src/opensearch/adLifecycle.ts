@@ -27,12 +27,20 @@ async function osTransport(
 ): Promise<{ statusCode: number | null; body: unknown }> {
   const t = (client as TransportClient).transport;
   if (!t?.request) throw new Error('OpenSearch client has no transport.request');
-  const res = await t.request({
-    method,
-    path,
-    ...(body ? { body } : {}),
-  });
-  return { statusCode: res.statusCode, body: res.body };
+  try {
+    const res = await t.request({
+      method,
+      path,
+      ...(body ? { body } : {}),
+    });
+    return { statusCode: res.statusCode, body: res.body };
+  } catch (e: unknown) {
+    if (isRecord(e) && isRecord(e['meta']) && typeof e['meta']['statusCode'] === 'number') {
+      const meta = e['meta'];
+      return { statusCode: meta['statusCode'] as number, body: meta['body'] ?? {} };
+    }
+    throw e;
+  }
 }
 
 function indicesMatch(detectorIndices: unknown, indexPattern: string): boolean {
@@ -208,6 +216,15 @@ async function egressDetectorIdsEnsure(
   };
 }
 
+function isAdSystemIndexNotReady404(body: unknown): boolean {
+  if (!isRecord(body)) return false;
+  const err = body['error'];
+  if (!isRecord(err)) return false;
+  if (getString(err['type']) !== 'index_not_found_exception') return false;
+  const reason = getString(err['reason'] ?? '');
+  return reason.includes('.opendistro-anomaly-detectors');
+}
+
 export async function ensureOpenSearchAnomalyPipeline(opts: {
   client: SearchClient;
   indexPattern: string;
@@ -221,10 +238,11 @@ export async function ensureOpenSearchAnomalyPipeline(opts: {
       query: { match_all: {} },
       size: 500,
     });
-    if (searchRes.statusCode === 404) {
+    const adIndexNotReady = searchRes.statusCode === 404 && isAdSystemIndexNotReady404(searchRes.body);
+    if (searchRes.statusCode === 404 && !adIndexNotReady) {
       return { ok: false, hasScopedSources: false, warning: 'OpenSearch Anomaly Detection plugin not available (404).' };
     }
-    if (searchRes.statusCode && searchRes.statusCode >= 400) {
+    if (searchRes.statusCode && searchRes.statusCode >= 400 && !adIndexNotReady) {
       return {
         ok: false,
         hasScopedSources: false,

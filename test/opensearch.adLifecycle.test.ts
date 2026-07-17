@@ -93,6 +93,56 @@ describe('ensureOpenSearchAnomalyPipeline', () => {
     expect(r.hasScopedSources).toBe(false);
   });
 
+  it('treats detectors search 404 index_not_found as empty and creates detector', async () => {
+    const idx404 = {
+      error: {
+        type: 'index_not_found_exception',
+        reason: 'no such index [.opendistro-anomaly-detectors]',
+        index: '.opendistro-anomaly-detectors',
+      },
+      status: 404,
+    };
+    const transport = vi
+      .fn()
+      .mockResolvedValueOnce({ statusCode: 404, body: idx404 })
+      .mockResolvedValueOnce({ statusCode: 201, body: { _id: 'new-det' } })
+      .mockResolvedValue({ statusCode: 200, body: {} });
+    const r = await ensureOpenSearchAnomalyPipeline({
+      client: clientWithTransport(transport),
+      indexPattern: 'flow-*',
+      srcIpField: 'flow.client.ip.addr',
+      bytesField: 'flow.bytes',
+      pollIntervalSeconds: 300,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.opensearch?.detectorIds).toEqual(['new-det']);
+    expect(transport).toHaveBeenCalledTimes(3);
+  });
+
+  it('maps thrown OpenSearch 404 index_not_found to create path', async () => {
+    const idx404 = {
+      error: {
+        type: 'index_not_found_exception',
+        reason: 'no such index [.opendistro-anomaly-detectors]',
+        index: '.opendistro-anomaly-detectors',
+      },
+    };
+    const transport = vi
+      .fn()
+      .mockRejectedValueOnce({ meta: { statusCode: 404, body: idx404 } })
+      .mockResolvedValueOnce({ statusCode: 201, body: { _id: 'from-throw' } })
+      .mockResolvedValue({ statusCode: 200, body: {} });
+    const r = await ensureOpenSearchAnomalyPipeline({
+      client: clientWithTransport(transport),
+      indexPattern: 'flow-*',
+      srcIpField: 'flow.client.ip.addr',
+      bytesField: 'flow.bytes',
+      pollIntervalSeconds: 300,
+    });
+    expect(r.ok).toBe(true);
+    expect(r.opensearch?.detectorIds).toEqual(['from-throw']);
+  });
+
   it('adopts first matching detector and starts it', async () => {
     const transport = vi
       .fn()
