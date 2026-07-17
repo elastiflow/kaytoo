@@ -64,40 +64,22 @@ describe('getConfig', () => {
     expect(cfg.logging.matrixSdkLevel).toBe('WARN');
   });
 
-  it('ignores undocumented legacy threshold env names', () => {
+  it('ignores undocumented threshold and poll env vars', () => {
     const cfg = getConfig({
       ...baseEnv,
       EGRESS_MULTIPLIER: '99',
       EGRESS_MIN_BYTES: '999',
       PORTSCAN_PORTS_THRESHOLD: '999',
       PORTSCAN_MIN_PACKETS: '999',
+      KAYTOO_EGRESS_MULTIPLIER: '5',
+      KAYTOO_EGRESS_MIN_BYTES: '10000000',
+      KAYTOO_POLL_INTERVAL_SECONDS: '60',
     });
     expect(cfg.thresholds.egressMultiplier).toBe(3);
     expect(cfg.thresholds.egressMinBytes).toBe(50_000_000);
     expect(cfg.thresholds.portscanDistinctDstPorts).toBe(50);
     expect(cfg.thresholds.portscanMinPackets).toBe(200);
-  });
-
-  it('reads KAYTOO_EGRESS_* and poll interval env vars', () => {
-    const cfg = getConfig({
-      ...baseEnv,
-      KAYTOO_POLL_INTERVAL_SECONDS: '60',
-      KAYTOO_EGRESS_MULTIPLIER: '5',
-      KAYTOO_EGRESS_MIN_BYTES: '10000000',
-    });
-    expect(cfg.behavior.pollIntervalSeconds).toBe(60);
-    expect(cfg.thresholds.egressMultiplier).toBe(5);
-    expect(cfg.thresholds.egressMinBytes).toBe(10_000_000);
-  });
-
-  it('treats blank KAYTOO_EGRESS_* as unset defaults', () => {
-    const cfg = getConfig({
-      ...baseEnv,
-      KAYTOO_EGRESS_MULTIPLIER: '  ',
-      KAYTOO_EGRESS_MIN_BYTES: '',
-    });
-    expect(cfg.thresholds.egressMultiplier).toBe(3);
-    expect(cfg.thresholds.egressMinBytes).toBe(50_000_000);
+    expect(cfg.behavior.pollIntervalSeconds).toBe(300);
   });
 
   it('throws a readable error when required vars are missing', () => {

@@ -54,13 +54,6 @@ config:
     # e.g. "gpt-4o" for OpenAI, "llama3.1" for Ollama,
     # or "unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL" for OpenWebUI/LiteLLM.
     model: ""
-  behavior:
-    # Optional. Seconds between insight polls. Empty uses app default (300).
-    pollIntervalSeconds: ""
-  thresholds:
-    # Optional. Empty uses app defaults (multiplier 3, min 50_000_000 bytes).
-    egressMultiplier: ""
-    egressMinBytes: ""
 
 secrets:
   existingSecret: ""
