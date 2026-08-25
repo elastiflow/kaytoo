@@ -64,7 +64,7 @@
     "@opensearch-project/opensearch": "^3.6.0",
     "@slack/socket-mode": "^3.0.0",
     "@slack/web-api": "^8.0.0",
-    "html-to-text": "^10.0.0",
+    "html-to-text": "^10.0.1",
     "isomorphic-dompurify": "^3.19.0",
     "marked": "^18.0.6",
     "matrix-js-sdk": "^41.9.0",
