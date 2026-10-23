@@ -4,6 +4,18 @@ entries:
   - annotations:
       artifacthub.io/license: Apache-2.0
     apiVersion: v2
+    appVersion: 0.7.2
+    created: "2026-10-23T15:30:19.957302719Z"
+    description: Kaytoo - Slack + OpenSearch insight bot
+    digest: f96e571b6162bb11194676d44621c3ef5f92d71e695279bd912ac4d919953e55
+    name: kaytoo
+    type: application
+    urls:
+    - https://github.com/elastiflow/kaytoo/releases/download/kaytoo-0.7.2/kaytoo-0.7.2.tgz
+    version: 0.7.2
+  - annotations:
+      artifacthub.io/license: Apache-2.0
+    apiVersion: v2
     appVersion: 0.7.1
     created: "2026-07-17T22:56:12.187991283Z"
     description: Kaytoo - Slack + OpenSearch insight bot
@@ -109,4 +121,4 @@ entries:
     urls:
     - https://github.com/elastiflow/kaytoo/releases/download/kaytoo-0.2.0/kaytoo-0.2.0.tgz
     version: 0.2.0
-generated: "2026-07-17T22:56:12.18803785Z"
+generated: "2026-10-23T15:30:19.957346872Z"
