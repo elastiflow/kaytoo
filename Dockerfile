@@ -12,7 +12,7 @@ COPY test ./test
 RUN npm run lint && npm test && npm run build
 RUN npm prune --omit=dev
 
-FROM gcr.io/distroless/nodejs24-debian12:nonroot
+FROM gcr.io/distroless/nodejs24-debian13:nonroot
 
 WORKDIR /app
 
